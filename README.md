@@ -1,6 +1,6 @@
-# Linkex App
+# Zenigram App
 
-Linkex is a Next.js social app with credentials/Google auth, posts, comments,
+Zenigram is a Next.js social app with credentials/Google auth, posts, comments,
 likes, profile privacy, messaging, story creation, and the Stories Globe.
 
 ## Run Locally
