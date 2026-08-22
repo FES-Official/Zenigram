@@ -1123,7 +1123,7 @@ function FeedLoadingScreen() {
     <div className="min-h-screen flex justify-center items-center bg-zinc-950 px-4 py-8">
       <div className="mx-auto w-full">
         <Image
-          src="/Zenigram-logo.svg"
+          src="/zenigram-logo.svg"
           alt="Loading..."
           width={48}
           height={48}
