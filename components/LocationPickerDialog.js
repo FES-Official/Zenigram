@@ -84,7 +84,7 @@ export default function LocationPickerDialog({
 
   const mapUrl = useMemo(() => {
     return `https://www.google.com/maps?q=${center.lat},${center.lng}&z=${zoom}&output=embed`;
-  }, [center, zoom]);
+  }, [center.let, center.lng, zoom]);
 
   const setCoordinates = (
     lat,
