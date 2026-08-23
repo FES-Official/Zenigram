@@ -68,10 +68,11 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
+const [mounted, setMounted] = useState(false);
+
+useEffect(() => {
+  setMounted(true);
+}, []);
 
   useEffect(() => {
     const handleEscape = (event) => {
