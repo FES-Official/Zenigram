@@ -11,10 +11,6 @@ const GOOGLE_MAPS_HOSTS = new Set([
   "www.google.co.in",
 ]);
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
 function roundCoordinate(value) {
   return Number(Number(value).toFixed(6));
 }
@@ -41,11 +37,9 @@ function extractCoordinatePair(value) {
     return null;
   }
 
-  const host = url.hostname.toLowerCase().replace(/^www\./, "www.");
   const normalizedHost = url.hostname.toLowerCase();
-  if (!GOOGLE_MAPS_HOSTS.has(normalizedHost) && !normalizedHost.endsWith(".google.com") && !normalizedHost.endsWith(".google.co.in")) {
-    return null;
-  }
+  const isGoogleHost = GOOGLE_MAPS_HOSTS.has(normalizedHost) || normalizedHost.endsWith(".google.com") || normalizedHost.endsWith(".google.co.in");
+  if (!isGoogleHost) return null;
 
   const q = url.searchParams.get("q") || url.searchParams.get("query") || url.searchParams.get("center");
   const fromQuery = q ? extractCoordinatePair(q) : null;
@@ -92,8 +86,8 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
     return `https://www.google.com/maps/@${selection.lat},${selection.lng},17z`;
   }, [selection]);
 
-  const parseGoogleMapsLink = () => {
-    const parsed = extractCoordinatePair(googleMapsUrl);
+  const parseGoogleMapsLink = (value = googleMapsUrl) => {
+    const parsed = extractCoordinatePair(value);
     if (!parsed) {
       setSelection(null);
       setConfirmed(false);
@@ -181,19 +175,20 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
                   rows={3}
                   className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-black/50 px-3 py-3 text-xs text-white outline-none focus:border-red-500/50"
                 />
-                <button type="button" onClick={parseGoogleMapsLink} className="mt-3 w-full rounded-xl border border-red-500/30 bg-red-600/15 px-4 py-2.5 text-xs font-bold text-red-200 transition hover:bg-red-600/25">Read coordinates from Google Maps link</button>
+                <button type="button" onClick={() => parseGoogleMapsLink()} className="mt-3 w-full rounded-xl border border-red-500/30 bg-red-600/15 px-4 py-2.5 text-xs font-bold text-red-200 transition hover:bg-red-600/25">Read coordinates from Google Maps link</button>
               </label>
 
               <label className="block rounded-2xl border border-white/10 bg-black/30 p-4">
                 <span className="text-sm font-bold">3. Manual coordinate fallback</span>
-                <p className="mt-1 text-[11px] leading-4 text-zinc-500">You can paste the exact `latitude, longitude` pair displayed by Google Maps when copying coordinates.</p>
+                <p className="mt-1 text-[11px] leading-4 text-zinc-500">Paste the exact `latitude, longitude` pair displayed by Google Maps.</p>
                 <input
                   type="text"
                   placeholder="23.259900, 77.412600"
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
-                      setGoogleMapsUrl(event.currentTarget.value);
-                      window.setTimeout(parseGoogleMapsLink, 0);
+                      const value = event.currentTarget.value;
+                      setGoogleMapsUrl(value);
+                      parseGoogleMapsLink(value);
                     }
                   }}
                   className="mt-3 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white outline-none focus:border-red-500/50"
@@ -205,12 +200,7 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
 
             <div className="space-y-3">
               <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
-                <iframe
-                  title="Google Maps location preview"
-                  src={mapsPreviewUrl}
-                  className="h-64 w-full border-0 sm:h-72"
-                  loading="lazy"
-                />
+                <iframe title="Google Maps location preview" src={mapsPreviewUrl} className="h-64 w-full border-0 sm:h-72" loading="lazy" />
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
@@ -220,9 +210,7 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
                     <div className="rounded-xl bg-white/5 p-3"><p className="text-[10px] text-zinc-500">Latitude</p><p className="mt-1 text-sm font-black">{selection.lat.toFixed(6)}</p></div>
                     <div className="rounded-xl bg-white/5 p-3"><p className="text-[10px] text-zinc-500">Longitude</p><p className="mt-1 text-sm font-black">{selection.lng.toFixed(6)}</p></div>
                   </div>
-                ) : (
-                  <p className="mt-2 text-sm text-zinc-500">No location verified yet.</p>
-                )}
+                ) : <p className="mt-2 text-sm text-zinc-500">No location verified yet.</p>}
               </div>
 
               <label className="flex cursor-pointer gap-3 rounded-2xl border border-red-500/20 bg-red-950/20 p-4">
@@ -230,7 +218,7 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
                 <span className="text-xs leading-5 text-zinc-300">I checked this exact point in Google Maps and confirm that the coordinates above are the location I want attached to this story.</span>
               </label>
 
-              <p className="text-[11px] leading-4 text-zinc-600">Zenigram stores the coordinates you provide. This confirms that you selected the location in Google Maps; it does not prove physical presence at that location.</p>
+              <p className="text-[11px] leading-4 text-zinc-600">This verifies that you selected the coordinates from Google Maps; it does not prove physical presence at that location.</p>
             </div>
           </div>
         </div>
