@@ -1,7 +1,8 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
 import { jsonError, jsonOk } from "@/app/lib/api";
-import { deletePost, getPostForViewer } from "@/app/lib/socialStore";
+import { deletePost } from "@/app/lib/socialStore";
+import { getSafePostForViewer } from "@/app/lib/safePostView";
 
 export async function GET(_req, { params }) {
   try {
@@ -10,7 +11,7 @@ export async function GET(_req, { params }) {
     if (!session?.user?.id) return jsonError("Unauthorized", 401);
     if (!id) return jsonError("Invalid post", 400);
 
-    const post = await getPostForViewer(id, session.user.id);
+    const post = await getSafePostForViewer(id, session.user.id);
     if (!post) return jsonError("Post not found", 404);
 
     return jsonOk({ post });
