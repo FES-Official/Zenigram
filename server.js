@@ -1,6 +1,7 @@
 import { createServer } from "http";
 import next from "next";
 import { Server } from "socket.io";
+import { getToken } from "next-auth/jwt";
 
 const hostname = process.env.HOSTNAME || "0.0.0.0";
 const port = Number.parseInt(process.env.PORT || "7860", 10);
@@ -89,19 +90,56 @@ app.prepare().then(() => {
     );
   });
 
+  const configuredOrigin =
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.NEXTAUTH_URL?.trim() ||
+    false;
+
   const io = new Server(httpServer, {
     path: "/api/socket_io",
     cors: {
-      origin: "*",
+      origin: configuredOrigin,
       methods: ["GET", "POST"],
     },
   });
 
   globalThis.__linkexIo = io;
 
+  io.use(async (socket, nextMiddleware) => {
+    try {
+      if (!process.env.NEXTAUTH_SECRET) {
+        return nextMiddleware(new Error("Realtime authentication is not configured"));
+      }
+
+      const token = await getToken({
+        req: socket.request,
+        secret: process.env.NEXTAUTH_SECRET,
+      });
+      const userId = typeof token?.id === "string" ? token.id.trim() : "";
+
+      if (!userId) {
+        return nextMiddleware(new Error("Unauthorized"));
+      }
+
+      socket.data.userId = userId;
+      return nextMiddleware();
+    } catch (error) {
+      console.error("Socket authentication error:", error);
+      return nextMiddleware(new Error("Unauthorized"));
+    }
+  });
+
   io.on("connection", (socket) => {
-    const registerUser = (userId) => {
-      if (typeof userId !== "string" || !userId.trim()) return;
+    const userId = socket.data.userId;
+    if (!userId) {
+      socket.disconnect(true);
+      return;
+    }
+
+    socket.join(`user:${userId}`);
+
+    // Backward-compatible events: never trust the client-supplied ID.
+    const registerUser = () => {
       socket.join(`user:${userId}`);
     };
     socket.on("register", registerUser);
