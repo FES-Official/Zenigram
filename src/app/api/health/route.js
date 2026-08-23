@@ -1,26 +1,21 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
+import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { getDynamoDocumentClient, getDynamoTableName } from "@/app/lib/dynamodb";
 import { getS3Config } from "@/app/lib/s3Storage";
-import { GetCommand } from "@aws-sdk/lib-dynamodb";
 
 export async function GET() {
   const checks = {
-    env: true,
+    env: Boolean(process.env.NEXTAUTH_SECRET),
     dynamodb: false,
-    s3: false,
+    s3: Boolean(getS3Config()),
   };
 
   try {
-    if (!process.env.NEXTAUTH_SECRET) {
+    if (!checks.env) {
       return Response.json(
-        { ok: false, checks: { ...checks, env: false } },
+        { ok: false, checks, timestamp: new Date().toISOString() },
         { status: 503 },
       );
     }
-
-    const s3 = getS3Config();
-    checks.s3 = Boolean(s3);
 
     const client = getDynamoDocumentClient();
     const table = getDynamoTableName();
@@ -32,13 +27,15 @@ export async function GET() {
     );
     checks.dynamodb = true;
 
-    const session = await getServerSession(authOptions);
-    return Response.json({
-      ok: true,
-      authenticated: Boolean(session?.user?.id),
-      checks,
-      timestamp: new Date().toISOString(),
-    });
+    const ok = checks.env && checks.dynamodb && checks.s3;
+    return Response.json(
+      {
+        ok,
+        checks,
+        timestamp: new Date().toISOString(),
+      },
+      { status: ok ? 200 : 503 },
+    );
   } catch (error) {
     console.error("Health check error:", error);
     return Response.json(
