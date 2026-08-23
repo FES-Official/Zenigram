@@ -203,22 +203,31 @@ export default function StoryModal({
   }, [inviteQuery]);
 
   useEffect(() => {
-    if (!commentMentionQuery) {
-      setCommentMentionResults([]);
-      return undefined;
+  const query = commentMentionQuery.trim();
+  if (query.length < 2) {
+    setCommentMentionResults([]);
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(async () => {
+    try {
+      const response = await fetch(
+        `/api/search/users?q=${encodeURIComponent(query)}`,
+        { signal: controller.signal }
+      );
+      const data = response.ok ? await response.json() : null;
+      setCommentMentionResults(Array.isArray(data?.users) ? data.users.slice(0, 5) : []);
+    } catch (error) {
+      if (error.name !== "AbortError") setCommentMentionResults([]);
     }
-    const controller = new AbortController();
-    const timeout = window.setTimeout(async () => {
-      try {
-        const response = await fetch(`/api/search/users?q=${encodeURIComponent(commentMentionQuery)}`, { signal: controller.signal });
-        const data = response.ok ? await response.json() : null;
-        setCommentMentionResults(Array.isArray(data?.users) ? data.users.slice(0, 5) : []);
-      } catch (error) {
-        if (error.name !== "AbortError") setCommentMentionResults([]);
-      }
-    }, 220);
-    return () => { window.clearTimeout(timeout); controller.abort(); };
-  }, [commentMentionQuery]);
+  }, 220);
+  
+  return () => {
+    window.clearTimeout(timeout);
+    controller.abort();
+  };
+}, [commentMentionQuery]);
 
   useEffect(
     () => () => {
