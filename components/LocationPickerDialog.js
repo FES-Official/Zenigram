@@ -1,530 +1,234 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 
-const INITIAL_LOCATION = {
-  lat: 20.5937,
-  lng: 78.9629,
-};
+const GOOGLE_MAPS_HOSTS = new Set([
+  "google.com",
+  "www.google.com",
+  "maps.google.com",
+  "www.google.co.in",
+]);
 
-function clamp(value, minimum, maximum) {
-  return Math.min(maximum, Math.max(minimum, value));
+function roundCoordinate(value) {
+  return Number(Number(value).toFixed(6));
 }
 
-function latToWorldY(lat) {
-  const radians = (clamp(lat, -85, 85) * Math.PI) / 180;
-
-  return (
-    (1 - Math.asinh(Math.tan(radians)) / Math.PI) /
-    2
-  );
+function validCoordinates(lat, lng) {
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 }
 
-function worldYToLat(value) {
-  return (
-    (Math.atan(
-      Math.sinh(Math.PI * (1 - 2 * value))
-    ) *
-      180) /
-    Math.PI
-  );
+function extractCoordinatePair(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+
+  const direct = text.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (direct) {
+    const lat = Number(direct[1]);
+    const lng = Number(direct[2]);
+    return validCoordinates(lat, lng) ? { lat, lng } : null;
+  }
+
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    return null;
+  }
+
+  const normalizedHost = url.hostname.toLowerCase();
+  const isGoogleHost = GOOGLE_MAPS_HOSTS.has(normalizedHost) || normalizedHost.endsWith(".google.com") || normalizedHost.endsWith(".google.co.in");
+  if (!isGoogleHost) return null;
+
+  const q = url.searchParams.get("q") || url.searchParams.get("query") || url.searchParams.get("center");
+  const fromQuery = q ? extractCoordinatePair(q) : null;
+  if (fromQuery) return fromQuery;
+
+  const patterns = [
+    /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const lat = Number(match[1]);
+    const lng = Number(match[2]);
+    if (validCoordinates(lat, lng)) return { lat, lng };
+  }
+
+  return null;
 }
 
-export default function LocationPickerDialog({
-  onClose,
-  onSelect,
-}) {
+export default function LocationPickerDialog({ onClose, onSelect }) {
   const [mounted, setMounted] = useState(false);
-
-  const [selection, setSelection] =
-    useState(INITIAL_LOCATION);
-
-  const [center, setCenter] =
-    useState(INITIAL_LOCATION);
-
-  const [pinPosition, setPinPosition] = useState({
-    x: 50,
-    y: 50,
-  });
-
-  const [zoom, setZoom] = useState(11);
-
+  const [googleMapsUrl, setGoogleMapsUrl] = useState("");
+  const [selection, setSelection] = useState(null);
   const [error, setError] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-
-    return () => {
-      setMounted(false);
-    };
+    return () => setMounted(false);
   }, []);
 
   useEffect(() => {
     const handleEscape = (event) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
+      if (event.key === "Escape") onClose();
     };
-
-    document.addEventListener(
-      "keydown",
-      handleEscape
-    );
-
-    return () => {
-      document.removeEventListener(
-        "keydown",
-        handleEscape
-      );
-    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
   }, [onClose]);
 
-  const mapUrl = useMemo(() => {
-    return `https://www.google.com/maps?q=${center.lat},${center.lng}&z=${zoom}&output=embed`;
-  }, [center.lat, center.lng, zoom]);
+  const mapsPreviewUrl = useMemo(() => {
+    if (!selection) return "https://www.google.com/maps";
+    return `https://www.google.com/maps/@${selection.lat},${selection.lng},17z`;
+  }, [selection]);
 
-  const setCoordinates = (
-    lat,
-    lng,
-    { recenter = true } = {}
-  ) => {
-    if (
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lng)
-    ) {
+  const parseGoogleMapsLink = (value = googleMapsUrl) => {
+    const parsed = extractCoordinatePair(value);
+    if (!parsed) {
+      setSelection(null);
+      setConfirmed(false);
+      setError("Paste a valid Google Maps link containing latitude and longitude, or enter the coordinates shown by Google Maps.");
       return;
     }
 
     const next = {
-      lat: Number(lat.toFixed(6)),
-      lng: Number(lng.toFixed(6)),
+      lat: roundCoordinate(parsed.lat),
+      lng: roundCoordinate(parsed.lng),
     };
-
     setSelection(next);
-
-    if (recenter) {
-      setCenter(next);
-
-      setPinPosition({
-        x: 50,
-        y: 50,
-      });
-    }
-
+    setConfirmed(false);
     setError("");
-  };
-
-  const useDeviceLocation = () => {
-    if (!navigator.geolocation) {
-      setError(
-        "Location is not supported by this browser."
-      );
-      return;
-    }
-
-    setError("");
-
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        setCoordinates(
-          coords.latitude,
-          coords.longitude
-        );
-      },
-      (locationError) => {
-        console.error(
-          "Geolocation error:",
-          locationError
-        );
-
-        setError(
-          "Unable to get your location. Allow location access or choose a point on the map."
-        );
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0,
-      }
-    );
-  };
-
-  const choosePoint = (event) => {
-    const rect =
-      event.currentTarget.getBoundingClientRect();
-
-    if (!rect.width || !rect.height) {
-      return;
-    }
-
-    const relativeX = clamp(
-      (event.clientX - rect.left) / rect.width,
-      0,
-      1
-    );
-
-    const relativeY = clamp(
-      (event.clientY - rect.top) / rect.height,
-      0,
-      1
-    );
-
-    const worldSize =
-      256 * 2 ** zoom;
-
-    const centerX =
-      ((center.lng + 180) / 360) *
-      worldSize;
-
-    const centerY =
-      latToWorldY(center.lat) *
-      worldSize;
-
-    const pointX =
-      centerX +
-      (relativeX - 0.5) *
-        rect.width;
-
-    const pointY =
-      centerY +
-      (relativeY - 0.5) *
-        rect.height;
-
-    const lng =
-      ((((pointX / worldSize) * 360 + 540) %
-        360) -
-        180);
-
-    const lat = worldYToLat(
-      clamp(
-        pointY / worldSize,
-        0.001,
-        0.999
-      )
-    );
-
-    setCoordinates(lat, lng, {
-      recenter: false,
-    });
-
-    setPinPosition({
-      x: relativeX * 100,
-      y: relativeY * 100,
-    });
-  };
-
-  const pan = (latAmount, lngAmount) => {
-    const scale =
-      0.55 *
-      2 ** Math.max(0, 11 - zoom);
-
-    setCenter((current) => ({
-      lat: clamp(
-        current.lat +
-          latAmount * scale,
-        -85,
-        85
-      ),
-
-      lng:
-        ((((current.lng +
-          lngAmount * scale) +
-          540) %
-          360) -
-          180),
-    }));
   };
 
   const save = () => {
-    const { lat, lng } = selection;
-
-    if (
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lng) ||
-      lat < -90 ||
-      lat > 90 ||
-      lng < -180 ||
-      lng > 180
-    ) {
-      setError(
-        "Choose a valid point on the map."
-      );
+    if (!selection || !validCoordinates(selection.lat, selection.lng)) {
+      setError("A valid Google Maps location is required before posting.");
+      return;
+    }
+    if (!confirmed) {
+      setError("Please confirm that you checked the exact location in Google Maps.");
       return;
     }
 
     onSelect({
-      lat,
-      lng,
+      lat: selection.lat,
+      lng: selection.lng,
+      source: "google_maps_manual",
+      googleMapsUrl: googleMapsUrl.trim(),
+      verified: true,
     });
   };
 
-  if (!mounted) {
-    return null;
-  }
+  if (!mounted) return null;
 
   return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
       onClick={onClose}
-      className="fixed inset-0 z-99999 flex items-center justify-center bg-black/80 p-3 backdrop-blur-md"
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/85 p-3 backdrop-blur-md"
     >
       <motion.section
-        initial={{
-          opacity: 0,
-          y: 22,
-          scale: 0.97,
-        }}
-        animate={{
-          opacity: 1,
-          y: 0,
-          scale: 1,
-        }}
-        exit={{
-          opacity: 0,
-          y: 22,
-        }}
-        transition={{
-          duration: 0.2,
-        }}
-        onClick={(event) => {
-          event.stopPropagation();
-        }}
+        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Choose story location"
-        className="flex max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-red-500/20 bg-[#100607] text-white shadow-2xl"
+        aria-label="Verify story location with Google Maps"
+        className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-red-500/20 bg-[#100607] text-white shadow-2xl"
       >
-        {/* Header */}
-        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 px-5 py-4">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[.24em] text-red-400">
-              Required to post
-            </p>
-
-            <h2 className="mt-1 text-xl font-black sm:text-2xl">
-              Choose your story location
-            </h2>
-
-            <p className="mt-1 text-xs text-zinc-500">
-              Click a point on the map to set
-              the latitude and longitude.
-            </p>
+        <header className="shrink-0 border-b border-white/10 px-5 py-4 sm:px-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[.24em] text-red-400">Required before posting</p>
+              <h2 className="mt-1 text-xl font-black sm:text-2xl">Verify story location</h2>
+              <p className="mt-1 max-w-xl text-xs leading-5 text-zinc-500">Find the exact place in Google Maps yourself, then paste the Google Maps link here. Zenigram will use the coordinates contained in that link.</p>
+            </div>
+            <button type="button" onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-lg hover:bg-white/20" aria-label="Close">×</button>
           </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-lg transition hover:bg-white/20"
-            aria-label="Close location picker"
-          >
-            ×
-          </button>
         </header>
 
-        {/* Content */}
-        <div className="min-h-0 overflow-y-auto">
-          <div className="grid gap-4 p-4 sm:grid-cols-[1.2fr_.8fr] sm:p-5">
-            {/* Map */}
-            <div className="relative h-72 overflow-hidden rounded-2xl border border-white/10 bg-black sm:h-[380px]">
-              <iframe
-                title="Google Maps location picker"
-                src={mapUrl}
-                className="pointer-events-none absolute inset-0 h-full w-full border-0"
-                loading="lazy"
-              />
-
-              {/* Click layer */}
-              <button
-                type="button"
-                onClick={choosePoint}
-                className="absolute inset-0 z-10 cursor-crosshair"
-                aria-label="Click to choose location"
-              >
-                <span
-                  className="pointer-events-none absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-red-500 bg-red-500/20 shadow-[0_0_0_4px_rgba(0,0,0,.35)]"
-                  style={{
-                    left: `${pinPosition.x}%`,
-                    top: `${pinPosition.y}%`,
-                  }}
-                />
-
-                <span
-                  className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500"
-                  style={{
-                    left: `${pinPosition.x}%`,
-                    top: `${pinPosition.y}%`,
-                  }}
-                />
-              </button>
-
-              {/* Pan Controls */}
-              <div className="absolute bottom-2 left-2 z-20 flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => pan(1, 0)}
-                  className="rounded-lg bg-black/75 px-3 py-2 text-xs font-bold text-white backdrop-blur hover:bg-black"
-                  aria-label="Pan map north"
-                >
-                  ↑
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => pan(0, -1)}
-                  className="rounded-lg bg-black/75 px-3 py-2 text-xs font-bold text-white backdrop-blur hover:bg-black"
-                  aria-label="Pan map west"
-                >
-                  ←
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => pan(0, 1)}
-                  className="rounded-lg bg-black/75 px-3 py-2 text-xs font-bold text-white backdrop-blur hover:bg-black"
-                  aria-label="Pan map east"
-                >
-                  →
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => pan(-1, 0)}
-                  className="rounded-lg bg-black/75 px-3 py-2 text-xs font-bold text-white backdrop-blur hover:bg-black"
-                  aria-label="Pan map south"
-                >
-                  ↓
-                </button>
+        <div className="min-h-0 overflow-y-auto p-4 sm:p-6">
+          <div className="grid gap-4 lg:grid-cols-[1.1fr_.9fr]">
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-red-500/15 bg-red-950/20 p-4">
+                <p className="text-sm font-bold">1. Find the exact location</p>
+                <p className="mt-1 text-xs leading-5 text-zinc-400">Open Google Maps, search for the place, adjust the map until the marker is on the exact location, then copy the Maps URL.</p>
+                <a href="https://www.google.com/maps" target="_blank" rel="noreferrer" className="mt-3 inline-flex rounded-xl bg-red-600 px-4 py-2 text-xs font-bold transition hover:bg-red-500">Open Google Maps</a>
               </div>
 
-              {/* Zoom Controls */}
-              <div className="absolute bottom-2 right-2 z-20 flex gap-1">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setZoom((value) =>
-                      clamp(
-                        value + 1,
-                        2,
-                        19
-                      )
-                    )
-                  }
-                  className="rounded-lg bg-black/75 px-3 py-2 text-sm font-bold text-white backdrop-blur hover:bg-black"
-                  aria-label="Zoom in"
-                >
-                  +
-                </button>
+              <label className="block rounded-2xl border border-white/10 bg-black/30 p-4">
+                <span className="text-sm font-bold">2. Paste Google Maps link</span>
+                <textarea
+                  value={googleMapsUrl}
+                  onChange={(event) => {
+                    setGoogleMapsUrl(event.target.value);
+                    setConfirmed(false);
+                    setError("");
+                  }}
+                  placeholder="https://www.google.com/maps/@23.2599,77.4126,17z"
+                  rows={3}
+                  className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-black/50 px-3 py-3 text-xs text-white outline-none focus:border-red-500/50"
+                />
+                <button type="button" onClick={() => parseGoogleMapsLink()} className="mt-3 w-full rounded-xl border border-red-500/30 bg-red-600/15 px-4 py-2.5 text-xs font-bold text-red-200 transition hover:bg-red-600/25">Read coordinates from Google Maps link</button>
+              </label>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setZoom((value) =>
-                      clamp(
-                        value - 1,
-                        2,
-                        19
-                      )
-                    )
-                  }
-                  className="rounded-lg bg-black/75 px-3 py-2 text-sm font-bold text-white backdrop-blur hover:bg-black"
-                  aria-label="Zoom out"
-                >
-                  −
-                </button>
-              </div>
+              <label className="block rounded-2xl border border-white/10 bg-black/30 p-4">
+                <span className="text-sm font-bold">3. Manual coordinate fallback</span>
+                <p className="mt-1 text-[11px] leading-4 text-zinc-500">Paste the exact `latitude, longitude` pair displayed by Google Maps.</p>
+                <input
+                  type="text"
+                  placeholder="23.259900, 77.412600"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      const value = event.currentTarget.value;
+                      setGoogleMapsUrl(value);
+                      parseGoogleMapsLink(value);
+                    }
+                  }}
+                  className="mt-3 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white outline-none focus:border-red-500/50"
+                />
+              </label>
+
+              {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs leading-5 text-red-300">{error}</div>}
             </div>
 
-            {/* Controls */}
             <div className="space-y-3">
-              <button
-                type="button"
-                onClick={useDeviceLocation}
-                className="w-full rounded-2xl bg-red-600 px-4 py-3 text-sm font-bold transition hover:bg-red-500 active:scale-[0.99]"
-              >
-                Use my current location
-              </button>
-
-              {/* Coordinates */}
-              <div className="grid grid-cols-2 gap-2">
-                <label className="text-xs text-zinc-500">
-                  Latitude
-
-                  <input
-                    type="number"
-                    readOnly
-                    value={selection.lat}
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none"
-                  />
-                </label>
-
-                <label className="text-xs text-zinc-500">
-                  Longitude
-
-                  <input
-                    type="number"
-                    readOnly
-                    value={selection.lng}
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none"
-                  />
-                </label>
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
+                <iframe title="Google Maps location preview" src={mapsPreviewUrl} className="h-64 w-full border-0 sm:h-72" loading="lazy" />
               </div>
 
-              {/* Information */}
-              <div className="rounded-xl border border-white/10 bg-black/25 p-3 text-[11px] leading-4 text-zinc-400">
-                Pan or zoom the map, then click
-                the exact place. Only latitude
-                and longitude are saved with your
-                story.
+              <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-[.2em] text-zinc-500">Selected coordinates</p>
+                {selection ? (
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div className="rounded-xl bg-white/5 p-3"><p className="text-[10px] text-zinc-500">Latitude</p><p className="mt-1 text-sm font-black">{selection.lat.toFixed(6)}</p></div>
+                    <div className="rounded-xl bg-white/5 p-3"><p className="text-[10px] text-zinc-500">Longitude</p><p className="mt-1 text-sm font-black">{selection.lng.toFixed(6)}</p></div>
+                  </div>
+                ) : <p className="mt-2 text-sm text-zinc-500">No location verified yet.</p>}
               </div>
 
-              {/* Error */}
-              {error && (
-                <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs leading-5 text-red-300">
-                  {error}
-                </div>
-              )}
+              <label className="flex cursor-pointer gap-3 rounded-2xl border border-red-500/20 bg-red-950/20 p-4">
+                <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4 accent-red-600" />
+                <span className="text-xs leading-5 text-zinc-300">I checked this exact point in Google Maps and confirm that the coordinates above are the location I want attached to this story.</span>
+              </label>
 
-              {/* Current location */}
-              <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-red-400">
-                  Selected location
-                </p>
-
-                <p className="mt-1 text-sm font-semibold text-white">
-                  {selection.lat.toFixed(6)},{" "}
-                  {selection.lng.toFixed(6)}
-                </p>
-              </div>
+              <p className="text-[11px] leading-4 text-zinc-600">This verifies that you selected the coordinates from Google Maps; it does not prove physical presence at that location.</p>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <footer className="flex shrink-0 justify-end gap-2 border-t border-white/10 p-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full px-4 py-2 text-sm text-zinc-400 transition hover:bg-white/5 hover:text-white"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="button"
-            onClick={save}
-            className="rounded-full bg-red-600 px-5 py-2 text-sm font-bold transition hover:bg-red-500"
-          >
-            Use this location
-          </button>
+        <footer className="flex shrink-0 justify-end gap-2 border-t border-white/10 p-4 sm:p-5">
+          <button type="button" onClick={onClose} className="rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-white">Cancel</button>
+          <button type="button" onClick={save} disabled={!selection || !confirmed} className="rounded-full bg-red-600 px-5 py-2 text-sm font-bold transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40">Verify location & continue</button>
         </footer>
       </motion.section>
     </motion.div>,
-    document.body
+    document.body,
   );
 }
