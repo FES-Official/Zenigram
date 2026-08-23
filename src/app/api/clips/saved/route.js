@@ -50,9 +50,7 @@ async function hydrateClip(clip, viewerId, savedAt, viewerRelations) {
 
   if (!user || user.accountStatus !== "active") return null;
   if (blocked.has(String(clip.userId))) return null;
-  if (user.ishidden && !viewerRelations.supporting?.map(String).includes(String(clip.userId)) && String(clip.userId) !== String(viewerId)) {
-    return null;
-  }
+  if (user.ishidden && !(viewerRelations.supporting || []).map(String).includes(String(clip.userId)) && String(clip.userId) !== String(viewerId)) return null;
 
   return {
     ...clip,
@@ -93,14 +91,12 @@ export async function GET() {
     const clips = await batchGet(clipIds.map((clipId) => ({ PK: `CLIP#${clipId}`, SK: "META" })));
     const clipMap = new Map(clips.map((item) => [String(item._id), clean(item)]));
 
-    const hydrated = (
-      await Promise.all(
-        saved
-          .map((savedItem) => ({ clip: clipMap.get(String(savedItem.clipId)), savedAt: savedItem.createdAt }))
-          .filter((item) => item.clip && item.clip.entityType === "clip")
-          .map((item) => hydrateClip(item.clip, viewerId, item.savedAt, viewerRelations)),
-      )
-    ).filter(Boolean);
+    const hydrated = (await Promise.all(
+      saved
+        .map((savedItem) => ({ clip: clipMap.get(String(savedItem.clipId)), savedAt: savedItem.createdAt }))
+        .filter((item) => item.clip && item.clip.entityType === "clip")
+        .map((item) => hydrateClip(item.clip, viewerId, item.savedAt, viewerRelations)),
+    )).filter(Boolean);
 
     return Response.json({ success: true, clips: hydrated });
   } catch (error) {
