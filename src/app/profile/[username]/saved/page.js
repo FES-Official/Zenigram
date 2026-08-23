@@ -61,6 +61,7 @@ export default function ProfileSavedPage() {
         if (!cancelled) setLoading(false);
       }
     };
+
     void load();
     return () => { cancelled = true; };
   }, [routeUsername, router, status]);
