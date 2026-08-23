@@ -2,7 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef} from "react";
 
 const GOOGLE_MAPS_HOSTS = new Set([
   "google.com",
@@ -70,8 +70,11 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
 
 const [mounted, setMounted] = useState(false);
 
+const isMountedRef = useRef(false);
+
 useEffect(() => {
-  setMounted(true);
+  isMountedRef.current = true;
+  return () => { isMountedRef.current = false; };
 }, []);
 
   useEffect(() => {
