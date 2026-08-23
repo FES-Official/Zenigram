@@ -18,7 +18,7 @@ async function getVisibleClip(clipId, viewerId) {
   const blocked = new Set([
     ...(relations.blockedUsers || []),
     ...(relations.blockedByUsers || []),
-  ]);
+  ].map(String));
   if (blocked.has(String(clip.userId))) return null;
 
   if (owner.ishidden && !(relations.supporting || []).map(String).includes(String(clip.userId))) {
@@ -39,9 +39,10 @@ export async function PATCH(req, { params }) {
       return jsonError("Invalid clip action", 400);
     }
 
+    const visibleClip = await getVisibleClip(clipId, session.user.id);
+    if (!visibleClip) return jsonError("Clip not found or not available to you", 404);
+
     if (action === "save") {
-      const clip = await getVisibleClip(clipId, session.user.id);
-      if (!clip) return jsonError("Clip not found or not available to you", 404);
       const saved = await toggleSavedClip(session.user.id, clipId);
       return Response.json({ success: true, saved });
     }
