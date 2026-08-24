@@ -31,13 +31,9 @@ async function createUniqueUsername(value) {
   const base = usernameBase(value);
   let username = base;
   let suffix = 1;
-
-  while (
-    await getUserByUsername(username)
-  ) {
+  while (await getUserByUsername(username)) {
     username = `${base.slice(0, 20)}${suffix++}`.slice(0, 24);
   }
-
   return username;
 }
 
@@ -74,13 +70,14 @@ async function ensureGoogleUser(user, profile) {
       lastLogin: new Date().toISOString(),
     });
   } else {
+    if (dbUser.accountStatus === "deactivated") return null;
+
     const updates = {
       email,
       lastLogin: new Date().toISOString(),
     };
     if (!dbUser.fullname) {
-      updates.fullname =
-        normalizeString(profile?.name || user.name) || dbUser.username;
+      updates.fullname = normalizeString(profile?.name || user.name) || dbUser.username;
     }
     if (!dbUser.username) {
       updates.username = await createUniqueUsername(
@@ -122,30 +119,23 @@ export const authOptions = {
         if (!identifier || typeof password !== "string") return null;
         const user = await getUserByIdentifier(identifier);
 
-        if (!user?.password) return null;
+        if (!user?.password || user.accountStatus === "deactivated") return null;
         const isValid = await bcrypt.compare(password, user.password);
         if (!isValid) return null;
 
         const updated = await updateUser(user._id, {
           lastLogin: new Date().toISOString(),
-          ...(user.accountStatus === "deactivated"
-            ? { accountStatus: "active", deactivatedAt: null }
-            : {}),
         });
         return updated ? authUser(updated) : null;
       },
     }),
   ],
-  session: {
-    strategy: "jwt",
-  },
+  session: { strategy: "jwt" },
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider !== "google") return true;
-
       const dbUser = await ensureGoogleUser(user, profile);
       if (!dbUser) return false;
-
       Object.assign(user, authUser(dbUser));
       return true;
     },
@@ -157,11 +147,15 @@ export const authOptions = {
       if (!dbUser && token.id) dbUser = await getUserById(token.id);
       if (!dbUser && token.email) dbUser = await findUserByEmail(token.email);
 
-      if (dbUser) {
+      if (dbUser && dbUser.accountStatus === "active") {
         const normalizedUser = authUser(dbUser);
         token.id = normalizedUser.id;
         token.name = normalizedUser.name;
         token.email = normalizedUser.email;
+      } else if (dbUser?.accountStatus === "deactivated") {
+        token.id = "";
+        token.name = "";
+        token.email = "";
       }
 
       return token;
@@ -176,9 +170,7 @@ export const authOptions = {
       return session;
     },
   },
-  pages: {
-    signIn: "/login",
-  },
+  pages: { signIn: "/login" },
   secret: process.env.NEXTAUTH_SECRET,
 };
 

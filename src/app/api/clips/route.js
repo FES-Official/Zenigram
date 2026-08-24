@@ -11,6 +11,27 @@ function jsonError(message, status = 400) {
   return Response.json({ success: false, message }, { status });
 }
 
+function normalizeTimeline(items, mediaCount) {
+  const source = Array.isArray(items) && items.length
+    ? items.slice(0, mediaCount)
+    : Array.from({ length: mediaCount }, () => ({ duration: 5, trimStart: 0 }));
+
+  if (source.length !== mediaCount) return null;
+
+  return source.map((item, index) => {
+    const rawDuration = Number(item?.duration ?? 3);
+    const rawTrimStart = Number(item?.trimStart ?? 0);
+    if (!Number.isFinite(rawDuration) || !Number.isFinite(rawTrimStart)) return null;
+
+    return {
+      mediaIndex: index,
+      duration: Math.max(0.5, Math.min(120, rawDuration)),
+      trimStart: Math.max(0, rawTrimStart),
+      filter: String(item?.filter || "none").slice(0, 40),
+    };
+  });
+}
+
 export async function GET(req) {
   try {
     const session = await getServerSession(authOptions);
@@ -38,6 +59,7 @@ export async function POST(req) {
       : body.media
         ? [body.media]
         : [];
+
     if (
       !requestedItems.length ||
       requestedItems.some(
@@ -46,43 +68,36 @@ export async function POST(req) {
     ) {
       return jsonError("Choose a supported image or video clip", 400);
     }
-    const timeline = Array.isArray(body.timeline) && body.timeline.length
-      ? body.timeline.slice(0, requestedItems.length)
-      : requestedItems.map(() => ({ duration: 5, trimStart: 0 }));
-    const duration = timeline.reduce(
-      (sum, item) => sum + Number(item.duration || 0),
-      0,
-    );
+
+    const timeline = normalizeTimeline(body.timeline, requestedItems.length);
+    if (!timeline) {
+      return jsonError("Every clip media item needs a valid timeline entry", 400);
+    }
+
+    const duration = timeline.reduce((sum, item) => sum + item.duration, 0);
     if (!Number.isFinite(duration) || duration <= 0 || duration > 120) {
       return jsonError("Clips must be between 1 second and 2 minutes", 400);
     }
+
     const [user, uploadedItems] = await Promise.all([
       getUserById(session.user.id),
       Promise.all(
-        requestedItems.map((item) =>
-          verifyS3Object(item.key, session.user.id),
-        ),
+        requestedItems.map((item) => verifyS3Object(item.key, session.user.id)),
       ),
     ]);
     if (!user || uploadedItems.some((item) => !item)) {
       return jsonError("Clip upload could not be verified", 400);
     }
+
     const mediaItems = uploadedItems.map((uploaded, index) => {
       const requested = requestedItems[index];
       const matches =
-        (requested.type === "image" &&
-          uploaded.contentType.startsWith("image/")) ||
-        (requested.type === "video" &&
-          uploaded.contentType.startsWith("video/"));
+        (requested.type === "image" && uploaded.contentType.startsWith("image/")) ||
+        (requested.type === "video" && uploaded.contentType.startsWith("video/"));
       if (!matches) throw new Error("Clip media type does not match");
       return { key: uploaded.key, url: uploaded.url, type: requested.type };
     });
-    const validTimeline = timeline.map((item, index) => ({
-      mediaIndex: index,
-      duration: Math.max(0.5, Math.min(120, Number(item.duration || 3))),
-      trimStart: Math.max(0, Number(item.trimStart || 0)),
-      filter: String(item.filter || "none").slice(0, 40),
-    }));
+
     const textLayers = (Array.isArray(body.textLayers) ? body.textLayers : [])
       .slice(0, 12)
       .map((layer) => ({
@@ -106,13 +121,20 @@ export async function POST(req) {
         underline: Boolean(layer.underline),
         strike: Boolean(layer.strike),
       }))
-      .filter((layer) => layer.text && layer.end > layer.start);
+      .filter((layer) =>
+        layer.text &&
+        Number.isFinite(layer.start) &&
+        Number.isFinite(layer.end) &&
+        layer.start < duration &&
+        layer.end > layer.start,
+      );
+
     const clip = await createClip({
       userId: user._id,
       caption,
       media: mediaItems[0],
       mediaItems,
-      timeline: validTimeline,
+      timeline,
       textLayers,
       duration,
       transition: ["cut", "fade", "slide", "zoom"].includes(body.transition)
