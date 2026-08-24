@@ -2,7 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState, useRef} from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const GOOGLE_MAPS_HOSTS = new Set(["google.com", "www.google.com", "maps.google.com", "www.google.co.in"]);
 
@@ -40,17 +40,8 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(false);
 
-const isMountedRef = useRef(false);
-
-useEffect(() => {
-  isMountedRef.current = true;
-  return () => { isMountedRef.current = false; };
-}, []);
-
   useEffect(() => {
-    const handleEscape = (event) => {
-      if (event.key === "Escape") onClose();
-    };
+    const handleEscape = (event) => { if (event.key === "Escape") onClose(); };
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
   }, [onClose]);
@@ -67,6 +58,8 @@ useEffect(() => {
     if (!confirmed) { setError("Please confirm that you checked the exact location in Google Maps."); return; }
     onSelect({ lat: selection.lat, lng: selection.lng, source: "google_maps_manual", googleMapsUrl: googleMapsUrl.trim(), verified: true });
   };
+
+  if (typeof document === "undefined") return null;
 
   return createPortal(
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/85 p-3 backdrop-blur-md">
