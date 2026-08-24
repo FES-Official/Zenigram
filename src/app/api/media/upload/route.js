@@ -123,6 +123,6 @@ export async function POST(req) {
     return jsonError("Invalid upload action", 400);
   } catch (error) {
     console.error("Direct S3 upload error:", error);
-    return jsonError(error.message || "Unable to prepare upload", 500);
+    return jsonError("Unable to prepare upload", 500);
   }
 }
