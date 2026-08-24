@@ -35,12 +35,14 @@ function normalizeTimeline(items, mediaCount) {
 export async function GET(req) {
   try {
     const session = await getServerSession(authOptions);
+    const rawLimit = Number(new URL(req.url).searchParams.get("limit"));
+    const limit = Number.isSafeInteger(rawLimit)
+      ? Math.min(80, Math.max(1, rawLimit))
+      : 80;
+
     return Response.json({
       success: true,
-      clips: await listClips(
-        session?.user?.id || "guest",
-        new URL(req.url).searchParams.get("limit") || 80,
-      ),
+      clips: await listClips(session?.user?.id || "guest", limit),
     });
   } catch (error) {
     console.error("Clips fetch error:", error);
