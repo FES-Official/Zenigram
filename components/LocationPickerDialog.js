@@ -2,7 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef} from "react";
 
 const GOOGLE_MAPS_HOSTS = new Set(["google.com", "www.google.com", "maps.google.com", "www.google.co.in"]);
 
@@ -40,8 +40,17 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(false);
 
+const isMountedRef = useRef(false);
+
+useEffect(() => {
+  isMountedRef.current = true;
+  return () => { isMountedRef.current = false; };
+}, []);
+
   useEffect(() => {
-    const handleEscape = (event) => { if (event.key === "Escape") onClose(); };
+    const handleEscape = (event) => {
+      if (event.key === "Escape") onClose();
+    };
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
   }, [onClose]);
