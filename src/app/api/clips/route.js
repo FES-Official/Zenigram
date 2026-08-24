@@ -147,6 +147,6 @@ export async function POST(req) {
     return Response.json({ success: true, clip }, { status: 201 });
   } catch (error) {
     console.error("Clip create error:", error);
-    return jsonError(error.message || "Failed to create clip", 500);
+    return jsonError("Failed to create clip", 500);
   }
 }
