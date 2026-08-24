@@ -2,6 +2,8 @@ import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { getDynamoDocumentClient, getDynamoTableName } from "@/app/lib/dynamodb";
 import { getS3Config } from "@/app/lib/s3Storage";
 
+const headers = { "Cache-Control": "no-store" };
+
 export async function GET() {
   const hasAuthSecret = Boolean(process.env.NEXTAUTH_SECRET);
   const hasS3 = Boolean(getS3Config());
@@ -9,7 +11,7 @@ export async function GET() {
   if (!hasAuthSecret || !hasS3) {
     return Response.json(
       { ok: false, timestamp: new Date().toISOString() },
-      { status: 503 },
+      { status: 503, headers },
     );
   }
 
@@ -24,7 +26,7 @@ export async function GET() {
 
     return Response.json(
       { ok: true, timestamp: new Date().toISOString() },
-      { status: 200 },
+      { status: 200, headers },
     );
   } catch (error) {
     console.error("Health check dependency failure:", error);
@@ -34,7 +36,7 @@ export async function GET() {
         message: "Service dependencies are unavailable",
         timestamp: new Date().toISOString(),
       },
-      { status: 503 },
+      { status: 503, headers },
     );
   }
 }
