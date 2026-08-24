@@ -12,7 +12,8 @@ import {
 } from "@/app/lib/socialStore";
 
 function normalizeEmail(value) {
-  return normalizeString(value).toLowerCase();
+  const normalized = normalizeString(value);
+  return (typeof normalized.normalize === "function" ? normalized.normalize("NFKC") : normalized).toLowerCase();
 }
 
 function usernameBase(value) {
