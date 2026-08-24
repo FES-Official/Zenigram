@@ -14,8 +14,7 @@ async function getClip(clipId) {
 
 async function ensureCounter(clipId, field, legacyValue) {
   await client().send(new UpdateCommand({
-    TableName: table(),
-    Key: clipKey(clipId),
+    TableName: table(), Key: clipKey(clipId),
     UpdateExpression: `SET ${field} = if_not_exists(${field}, :legacy)`,
     ExpressionAttributeValues: { ":legacy": Math.max(0, Number(legacyValue || 0)) },
     ConditionExpression: "attribute_exists(PK)",
@@ -45,7 +44,7 @@ async function applyLikeState(clipId, userId, liked) {
         ]
       : [
           { Delete: { TableName: table(), Key: key, ConditionExpression: "attribute_exists(PK)" } },
-          { Update: { TableName: table(), Key: clipKey(clipId), UpdateExpression: "ADD likesCount :minusOne, feedScore :minusScore SET updatedAt = :now", ExpressionAttributeValues: { ":minusOne": -1, ":minusScore": -3, ":one": 1, ":minusScore": -3, ":now": timestamp }, ConditionExpression: "attribute_exists(PK) AND likesCount >= :one" } },
+          { Update: { TableName: table(), Key: clipKey(clipId), UpdateExpression: "ADD likesCount :minusOne, feedScore :minusScore SET updatedAt = :now", ExpressionAttributeValues: { ":minusOne": -1, ":minusScore": -3, ":one": 1, ":now": timestamp }, ConditionExpression: "attribute_exists(PK) AND likesCount >= :one" } },
         ],
   }));
 }
@@ -57,19 +56,13 @@ export async function toggleClipLikeAtomic(clipId, userId) {
   try {
     await applyLikeState(clipId, userId, desired);
   } catch (error) {
-    // Concurrent toggles can legitimately invalidate the first read. Re-read
-    // and apply the opposite state once, so the operation remains consistent
-    // instead of leaking a conditional-write error to the client.
     if (error?.name !== "TransactionCanceledException" && error?.name !== "ConditionalCheckFailedException") throw error;
     const latest = await getClipViewerEngagement(clipId, userId);
-    if (latest.liked === desired) {
-      const clip = await getClip(clipId);
-      return { liked: latest.liked, likesCount: Math.max(0, Number(clip?.likesCount ?? clip?.likes?.length ?? 0)) };
-    }
-    await applyLikeState(clipId, userId, !latest.liked);
+    if (latest.liked !== desired) await applyLikeState(clipId, userId, desired);
   }
   const updated = await getClip(clipId);
-  return { liked: !current.liked, likesCount: Math.max(0, Number(updated?.likesCount ?? updated?.likes?.length ?? 0)) };
+  const finalState = await getClipViewerEngagement(clipId, userId);
+  return { liked: finalState.liked, likesCount: Math.max(0, Number(updated?.likesCount ?? updated?.likes?.length ?? 0)) };
 }
 
 export async function recordClipViewAtomic(clipId, userId) {
@@ -86,24 +79,20 @@ export async function recordClipViewAtomic(clipId, userId) {
         { Update: { TableName: table(), Key: clipKey(clipId), UpdateExpression: "ADD viewsCount :one, feedScore :score SET updatedAt = :now", ExpressionAttributeValues: { ":one": 1, ":score": 1, ":now": timestamp }, ConditionExpression: "attribute_exists(PK)" } },
       ],
     }));
-    const updated = await getClip(clipId);
-    return { recorded: true, viewed: true, viewsCount: Number(updated?.viewsCount ?? updated?.views?.length ?? 0) };
   } catch (error) {
     if (error?.name !== "TransactionCanceledException" && error?.name !== "ConditionalCheckFailedException") throw error;
-    const updated = await getClip(clipId);
-    return { recorded: false, viewed: true, viewsCount: Number(updated?.viewsCount ?? updated?.views?.length ?? 0) };
   }
+  const updated = await getClip(clipId);
+  return { recorded: true, viewed: true, viewsCount: Number(updated?.viewsCount ?? updated?.views?.length ?? 0) };
 }
 
 export async function incrementClipShareAtomic(clipId) {
   const timestamp = new Date().toISOString();
   const result = await client().send(new UpdateCommand({
-    TableName: table(),
-    Key: clipKey(clipId),
+    TableName: table(), Key: clipKey(clipId),
     UpdateExpression: "ADD shares :one, feedScore :score SET updatedAt = :now",
     ExpressionAttributeValues: { ":one": 1, ":score": 5, ":now": timestamp },
-    ConditionExpression: "attribute_exists(PK)",
-    ReturnValues: "ALL_NEW",
+    ConditionExpression: "attribute_exists(PK)", ReturnValues: "ALL_NEW",
   }));
   return { shares: Number(result.Attributes?.shares || 0) };
 }
