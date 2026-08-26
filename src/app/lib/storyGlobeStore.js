@@ -1,4 +1,5 @@
 import { listStories } from "@/app/lib/storyStore";
+import { getUserRelations } from "@/app/lib/socialStore";
 
 const TABS = new Set(["all", "trending", "close", "supporting"]);
 
@@ -16,26 +17,26 @@ function decodeCursor(cursor) {
   const parsed = Number.parseInt(Buffer.from(String(cursor), "base64url").toString("utf8"), 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
-
-function encodeCursor(value) {
-  return Buffer.from(String(value), "utf8").toString("base64url");
-}
+function encodeCursor(value) { return Buffer.from(String(value), "utf8").toString("base64url"); }
 
 export async function listStoryGlobe(viewerId, tab = "all", limit = 80, cursor = "") {
   const selectedTab = TABS.has(tab) ? tab : "all";
   const safeLimit = Math.min(100, Math.max(1, Number(limit) || 80));
+  if (!viewerId && selectedTab !== "all" && selectedTab !== "trending") {
+    return { tab: selectedTab, stories: [], nextCursor: null, hasMore: false, totalLoaded: 0 };
+  }
+
   const source = await listStories(viewerId);
   let stories = source;
-
   if (selectedTab === "close") {
     stories = stories.filter((story) => story.closeOne);
   } else if (selectedTab === "supporting") {
-    const supporting = new Set((await import("@/app/lib/socialStore")).getUserRelations
-      ? (await (await import("@/app/lib/socialStore")).getUserRelations(viewerId)).supporting.map(String)
-      : []);
+    const relations = await getUserRelations(viewerId);
+    const supporting = new Set((relations.supporting || []).map(String));
     stories = stories.filter((story) => supporting.has(String(story.userId?._id)));
   } else if (selectedTab === "trending") {
-    stories = [...stories].map((story) => ({ ...story, trendingScore: scoreStory(story) }))
+    stories = [...stories]
+      .map((story) => ({ ...story, trendingScore: scoreStory(story) }))
       .sort((a, b) => b.trendingScore - a.trendingScore || new Date(b.createdAt) - new Date(a.createdAt));
   } else {
     stories = [...stories].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
