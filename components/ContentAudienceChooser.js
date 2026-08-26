@@ -9,7 +9,14 @@ export default function ContentAudienceChooser({ target }) {
 
   useEffect(() => {
     const key = target === "clip" ? "zenigram-clip-audience" : "zenigram-post-audience";
-    setCloseOnesOnly(window.localStorage.getItem(key) === "close");
+    const saved = window.localStorage.getItem(key) === "close";
+    setCloseOnesOnly(saved);
+
+    fetch("/api/content-audience", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target, closeOnesOnly: saved }),
+    }).catch(() => {});
   }, [target]);
 
   const choose = async (value) => {
