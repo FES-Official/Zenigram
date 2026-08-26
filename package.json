@@ -40,7 +40,7 @@
     "mapbox-gl": "^3.24.0",
     "multer": "^2.1.0",
     "next": "16.2.9",
-    "next-auth": "^4.24.14",
+    "next-auth": "^4.24.15",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-draggable": "^4.5.0",

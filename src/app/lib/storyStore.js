@@ -88,17 +88,19 @@ async function listByFeed(feed, limit = 250) {
 
 async function getEvent(eventId) {
   if (!eventId) return null;
-  const result = await db().send(
-    new GetCommand({ TableName: table(), Key: { PK: `EVENT#${eventId}`, SK: "META" } }),
-  );
+  const result = await db().send(new GetCommand({
+    TableName: table(),
+    Key: { PK: `EVENT#${eventId}`, SK: "META" },
+  }));
   return clean(result.Item);
 }
 
 async function getMission(missionId) {
   if (!missionId) return null;
-  const result = await db().send(
-    new GetCommand({ TableName: table(), Key: { PK: `MISSION#${missionId}`, SK: "META" } }),
-  );
+  const result = await db().send(new GetCommand({
+    TableName: table(),
+    Key: { PK: `MISSION#${missionId}`, SK: "META" },
+  }));
   return clean(result.Item);
 }
 
@@ -233,7 +235,9 @@ export async function createStory(input) {
     mediaType: input.mediaType || "image",
     latitude: input.location.lat,
     longitude: input.location.lng,
-    locationSource: "manual",
+    locationSource: input.location.source || "manual",
+    locationVerified: input.location.verified === true,
+    googleMapsUrl: input.location.googleMapsUrl || null,
     realityScore: input.realityScore,
     realityLabel: input.realityLabel,
     eventId: event._id,
@@ -254,7 +258,9 @@ export async function createStory(input) {
   const previousDay = user.progression?.lastStoryDay || "";
   const oldPower = Number(user.progression?.currentPower || 0);
   const firstToday = previousDay !== day;
-  const currentPower = firstToday ? (isPreviousDay(previousDay, day) ? oldPower + 1 : 1) : oldPower;
+  const currentPower = firstToday
+    ? (isPreviousDay(previousDay, day) ? oldPower + 1 : 1)
+    : oldPower;
   const progression = {
     ...(user.progression || {}),
     currentPower,
@@ -265,25 +271,45 @@ export async function createStory(input) {
   };
 
   const writes = [
-    { Put: { TableName: table(), Item: {
-      PK: `STORY#${id}`, SK: "META", GSI1PK: "FEED#STORIES",
-      GSI1SK: `${createdAt}#${id}`, ...story,
-    } } },
-    { Update: {
-      TableName: table(),
-      Key: { PK: `EVENT#${event._id}`, SK: "META" },
-      UpdateExpression: (event.contributorIds || []).includes(input.userId)
-        ? "ADD storyCount :one SET updatedAt = :now"
-        : "ADD storyCount :one SET contributorIds = list_append(if_not_exists(contributorIds, :empty), :contributors), updatedAt = :now",
-      ExpressionAttributeValues: (event.contributorIds || []).includes(input.userId)
-        ? { ":one": 1, ":now": createdAt }
-        : { ":one": 1, ":empty": [], ":contributors": [input.userId], ":now": createdAt },
-    } },
+    {
+      Put: {
+        TableName: table(),
+        Item: {
+          PK: `STORY#${id}`,
+          SK: "META",
+          GSI1PK: "FEED#STORIES",
+          GSI1SK: `${createdAt}#${id}`,
+          ...story,
+        },
+        ConditionExpression: "attribute_not_exists(PK)",
+      },
+    },
+    {
+      Update: {
+        TableName: table(),
+        Key: { PK: `EVENT#${event._id}`, SK: "META" },
+        UpdateExpression: (event.contributorIds || []).includes(input.userId)
+          ? "ADD storyCount :one SET updatedAt = :now"
+          : "ADD storyCount :one SET contributorIds = list_append(if_not_exists(contributorIds, :empty), :contributors), updatedAt = :now",
+        ExpressionAttributeValues: (event.contributorIds || []).includes(input.userId)
+          ? { ":one": 1, ":now": createdAt }
+          : { ":one": 1, ":empty": [], ":contributors": [input.userId], ":now": createdAt },
+      },
+    },
   ];
-  if (validMission) writes.push({ Update: { TableName: table(), Key: { PK: `MISSION#${mission._id}`, SK: "META" },
-    UpdateExpression: "ADD submissionCount :one SET updatedAt = :now",
-    ExpressionAttributeValues: { ":one": 1, ":now": createdAt },
-  } });
+
+  if (validMission) {
+    writes.push({
+      Update: {
+        TableName: table(),
+        Key: { PK: `MISSION#${mission._id}`, SK: "META" },
+        UpdateExpression: "ADD submissionCount :one SET updatedAt = :now",
+        ExpressionAttributeValues: { ":one": 1, ":now": createdAt },
+        ConditionExpression: "attribute_exists(PK) AND active = :active",
+      },
+    });
+  }
+
   await db().send(new TransactWriteCommand({ TransactItems: writes }));
   if (firstToday) await updateUser(input.userId, { progression });
   await Promise.allSettled(mentionedUserIds.map((recipient) => createNotification({
@@ -298,7 +324,8 @@ export async function createStory(input) {
 
 export async function getStory(storyId) {
   const result = await db().send(new GetCommand({
-    TableName: table(), Key: { PK: `STORY#${storyId}`, SK: "META" },
+    TableName: table(),
+    Key: { PK: `STORY#${storyId}`, SK: "META" },
   }));
   return clean(result.Item);
 }
@@ -308,7 +335,9 @@ export async function listStories(viewerId) {
   const stories = (await listByFeed("FEED#STORIES", 500)).filter(
     (story) => new Date(story.expiresAt || new Date(story.createdAt).getTime() + DAY_MS).getTime() > current,
   );
-  const relations = viewerId ? await getUserRelations(viewerId) : { supporting: [], blockedUsers: [] };
+  const relations = viewerId
+    ? await getUserRelations(viewerId)
+    : { supporting: [], blockedUsers: [], blockedByUsers: [] };
   const blocked = new Set([
     ...(relations.blockedUsers || []),
     ...(relations.blockedByUsers || []),
@@ -321,24 +350,61 @@ export async function listStories(viewerId) {
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }
 
+async function transactStoryLike(storyId, userId, shouldLike) {
+  const key = { PK: `STORY#${storyId}`, SK: `LIKE#${userId}` };
+  const delta = shouldLike ? 1 : -1;
+  await db().send(new TransactWriteCommand({
+    TransactItems: [
+      shouldLike
+        ? {
+            Put: {
+              TableName: table(),
+              Item: { ...key, entityType: "storyLike", userId, createdAt: nowIso() },
+              ConditionExpression: "attribute_not_exists(PK)",
+            },
+          }
+        : {
+            Delete: {
+              TableName: table(),
+              Key: key,
+              ConditionExpression: "attribute_exists(PK)",
+            },
+          },
+      {
+        Update: {
+          TableName: table(),
+          Key: { PK: `STORY#${storyId}`, SK: "META" },
+          UpdateExpression: "ADD likesCount :delta SET updatedAt = :now",
+          ExpressionAttributeValues: { ":delta": delta, ":now": nowIso() },
+          ConditionExpression: "attribute_exists(PK)",
+        },
+      },
+    ],
+  }));
+}
+
 export async function engageStory(storyId, userId, action) {
   const story = await getStory(storyId);
   if (!story || new Date(story.expiresAt).getTime() <= Date.now()) return null;
+
   if (action === "like") {
     const key = { PK: `STORY#${storyId}`, SK: `LIKE#${userId}` };
     const existing = await db().send(new GetCommand({ TableName: table(), Key: key }));
     const liked = !existing.Item;
-    await db().send(new TransactWriteCommand({ TransactItems: [
-      liked
-        ? { Put: { TableName: table(), Item: { ...key, entityType: "storyLike", userId, createdAt: nowIso() } } }
-        : { Delete: { TableName: table(), Key: key } },
-      { Update: { TableName: table(), Key: { PK: `STORY#${storyId}`, SK: "META" },
-        UpdateExpression: "ADD likesCount :delta SET updatedAt = :now",
-        ExpressionAttributeValues: { ":delta": liked ? 1 : -1, ":now": nowIso() },
-      } },
-    ] }));
+    try {
+      await transactStoryLike(storyId, userId, liked);
+    } catch (error) {
+      if (error?.name !== "TransactionCanceledException") throw error;
+      const retryExisting = await db().send(new GetCommand({ TableName: table(), Key: key }));
+      const retryLiked = !retryExisting.Item;
+      await transactStoryLike(storyId, userId, retryLiked);
+    }
     const updated = await getStory(storyId);
-    return { likesCount: Math.max(0, updated.likesCount || 0), viewsCount: updated.viewsCount || 0, viewerLiked: liked };
+    return {
+      likesCount: Math.max(0, updated?.likesCount || 0),
+      viewsCount: Math.max(0, updated?.viewsCount || 0),
+      viewerLiked: Boolean((await db().send(new GetCommand({ TableName: table(), Key: key }))).Item),
+    };
   }
 
   const viewKey = { PK: `STORY#${storyId}`, SK: `VIEW#${userId}` };
@@ -346,11 +412,36 @@ export async function engageStory(storyId, userId, action) {
   const own = story.userId === userId;
   let newlyAwardedAchievements = [];
   let lastHoursReward = null;
+
   if (!existing.Item) {
-    await db().send(new TransactWriteCommand({ TransactItems: [
-      { Put: { TableName: table(), Item: { ...viewKey, entityType: "storyView", userId, lastHoursPoints: 0, createdAt: nowIso(), expiresAt: story.expiresAt } } },
-      { Update: { TableName: table(), Key: { PK: `STORY#${storyId}`, SK: "META" }, UpdateExpression: "ADD viewsCount :one", ExpressionAttributeValues: { ":one": 1 } } },
-    ] }));
+    try {
+      await db().send(new TransactWriteCommand({
+        TransactItems: [
+          {
+            Put: {
+              TableName: table(),
+              Item: { ...viewKey, entityType: "storyView", userId, lastHoursPoints: 0, createdAt: nowIso(), expiresAt: story.expiresAt },
+              ConditionExpression: "attribute_not_exists(PK)",
+            },
+          },
+          {
+            Update: {
+              TableName: table(),
+              Key: { PK: `STORY#${storyId}`, SK: "META" },
+              UpdateExpression: "ADD viewsCount :one",
+              ExpressionAttributeValues: { ":one": 1 },
+              ConditionExpression: "attribute_exists(PK)",
+            },
+          },
+        ],
+      }));
+    } catch (error) {
+      if (error?.name === "TransactionCanceledException") {
+        return engageStory(storyId, userId, action);
+      }
+      throw error;
+    }
+
     if (!own) {
       const user = await getUserById(userId);
       const viewed = Number(user?.progression?.storiesViewed || 0) + 1;
@@ -368,16 +459,22 @@ export async function engageStory(storyId, userId, action) {
       };
       await updateUser(userId, { progression });
       if (points) {
-        await db().send(new UpdateCommand({ TableName: table(), Key: viewKey, UpdateExpression: "SET lastHoursPoints = :points, lastHoursClaimedAt = :now", ExpressionAttributeValues: { ":points": points, ":now": nowIso() } }));
+        await db().send(new UpdateCommand({
+          TableName: table(),
+          Key: viewKey,
+          UpdateExpression: "SET lastHoursPoints = :points, lastHoursClaimedAt = :now",
+          ExpressionAttributeValues: { ":points": points, ":now": nowIso() },
+        }));
         lastHoursReward = { points, totalPoints: progression.lastHoursPoints, goal: LAST_HOURS_GOAL };
       }
     }
   }
+
   const updated = await getStory(storyId);
   const viewer = await getUserById(userId);
   return {
-    likesCount: updated.likesCount || 0,
-    viewsCount: updated.viewsCount || 0,
+    likesCount: Math.max(0, updated?.likesCount || 0),
+    viewsCount: Math.max(0, updated?.viewsCount || 0),
     viewerLiked: Boolean((await db().send(new GetCommand({ TableName: table(), Key: { PK: `STORY#${storyId}`, SK: `LIKE#${userId}` } }))).Item),
     progression: {
       storiesViewed: Number(viewer?.progression?.storiesViewed || 0),
@@ -398,49 +495,81 @@ export async function listStoryComments(storyId, viewerId = "", limit = 100) {
     ScanIndexForward: false,
     Limit: limit,
   }));
-  return Promise.all((result.Items || []).map(async (item) => ({ ...clean(item), user: await getUserById(item.userId), viewerLiked: Boolean(viewerId && (item.likes || []).includes(viewerId)) })));
+  return Promise.all((result.Items || []).map(async (item) => ({
+    ...clean(item),
+    user: await getUserById(item.userId),
+    viewerLiked: Boolean(viewerId && (item.likes || []).includes(viewerId)),
+  })));
 }
 
 export async function addStoryComment(storyId, userId, text, parentId = null) {
   const story = await getStory(storyId);
   const user = await getUserById(userId);
-  if (!story || !user) return null;
+  if (!story || !user || new Date(story.expiresAt).getTime() <= Date.now()) return null;
+  const safeText = String(text || "").trim().slice(0, 1000);
+  if (!safeText) return null;
   const id = newId();
   const createdAt = nowIso();
-  const comment = { _id: id, entityType: "storyComment", storyId, userId, text, parentId: parentId || null, likes: [], createdAt, updatedAt: createdAt };
+  const comment = { _id: id, entityType: "storyComment", storyId, userId, text: safeText, parentId: parentId || null, likes: [], createdAt, updatedAt: createdAt };
   await db().send(new TransactWriteCommand({ TransactItems: [
     { Put: { TableName: table(), Item: { PK: `STORY#${storyId}`, SK: `COMMENT#${createdAt}#${id}`, ...comment } } },
-    { Update: { TableName: table(), Key: { PK: `STORY#${storyId}`, SK: "META" }, UpdateExpression: "ADD commentsCount :one", ExpressionAttributeValues: { ":one": 1 } } },
+    { Update: { TableName: table(), Key: { PK: `STORY#${storyId}`, SK: "META" }, UpdateExpression: "ADD commentsCount :one", ExpressionAttributeValues: { ":one": 1 }, ConditionExpression: "attribute_exists(PK)" } },
   ] }));
-  if (story.userId !== userId) await createNotification({ recipient: story.userId, sender: userId, type: "story_comment", status: "approved" });
+  if (story.userId !== userId) await createNotification({ recipient: story.userId, sender: userId, type: "story_comment", story: storyId, status: "approved" });
   return { ...comment, user };
 }
 
 export async function toggleStoryCommentLike(storyId, commentId, userId) {
-  const result = await db().send(new QueryCommand({ TableName: table(), KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)", ExpressionAttributeValues: { ":pk": `STORY#${storyId}`, ":prefix": "COMMENT#" }, Limit: 500 }));
+  const result = await db().send(new QueryCommand({
+    TableName: table(),
+    KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+    ExpressionAttributeValues: { ":pk": `STORY#${storyId}`, ":prefix": "COMMENT#" },
+    Limit: 500,
+  }));
   const item = (result.Items || []).find((entry) => String(entry._id) === String(commentId));
   if (!item) return null;
-  const likes = (item.likes || []).includes(userId) ? item.likes.filter((id) => id !== userId) : [...(item.likes || []), userId];
-  await db().send(new UpdateCommand({ TableName: table(), Key: { PK: item.PK, SK: item.SK }, UpdateExpression: "SET likes = :likes, updatedAt = :now", ExpressionAttributeValues: { ":likes": likes, ":now": nowIso() } }));
+  const likes = (item.likes || []).includes(userId)
+    ? item.likes.filter((id) => id !== userId)
+    : [...(item.likes || []), userId];
+  await db().send(new UpdateCommand({
+    TableName: table(),
+    Key: { PK: item.PK, SK: item.SK },
+    UpdateExpression: "SET likes = :likes, updatedAt = :now",
+    ExpressionAttributeValues: { ":likes": likes, ":now": nowIso() },
+  }));
   return { ...clean(item), likes, viewerLiked: likes.includes(userId) };
 }
 
 export async function createReport(input) {
   const id = newId();
   const createdAt = nowIso();
-  await db().send(new PutCommand({ TableName: table(), Item: {
-    PK: `REPORT#${id}`, SK: "META", _id: id, entityType: "report", status: "open", ...input, createdAt, updatedAt: createdAt,
-  } }));
+  await db().send(new PutCommand({
+    TableName: table(),
+    Item: {
+      PK: `REPORT#${id}`,
+      SK: "META",
+      _id: id,
+      entityType: "report",
+      status: "open",
+      ...input,
+      createdAt,
+      updatedAt: createdAt,
+    },
+  }));
   return id;
 }
 
 export async function listInvitations(userId) {
   const result = await db().send(new QueryCommand({
-    TableName: table(), KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
-    ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "INVITATION#" }, ScanIndexForward: false,
+    TableName: table(),
+    KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+    ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "INVITATION#" },
+    ScanIndexForward: false,
   }));
   return Promise.all((result.Items || []).map(async (item) => ({
-    ...clean(item), event: await getEvent(item.eventId), sender: await getUserById(item.senderId),
+    ...clean(item),
+    event: await getEvent(item.eventId),
+    sender: await getUserById(item.senderId),
   })));
 }
 
@@ -448,23 +577,36 @@ export async function createInvitation(eventId, senderId, recipientId) {
   const [event, recipient] = await Promise.all([getEvent(eventId), getUserById(recipientId)]);
   if (!event || !recipient || new Date(event.expiresAt) <= new Date()) return null;
   if (event.createdBy !== senderId && !(event.contributorIds || []).includes(senderId)) return { forbidden: true };
+  if (senderId === recipientId) return { forbidden: true };
   const id = `${eventId}#${senderId}`;
   const createdAt = nowIso();
   const invitation = { _id: id, entityType: "eventInvitation", eventId, senderId, recipientId, status: "pending", createdAt, updatedAt: createdAt };
-  await db().send(new PutCommand({ TableName: table(), Item: { PK: `USER#${recipientId}`, SK: `INVITATION#${id}`, ...invitation } }));
+  await db().send(new PutCommand({
+    TableName: table(),
+    Item: { PK: `USER#${recipientId}`, SK: `INVITATION#${id}`, ...invitation },
+    ConditionExpression: "attribute_not_exists(PK)",
+  }));
   await createNotification({ recipient: recipientId, sender: senderId, type: "event_invitation", event: eventId, status: "pending" });
   return invitation;
 }
 
 export async function respondToInvitation(userId, invitationId, action) {
   const key = { PK: `USER#${userId}`, SK: `INVITATION#${invitationId}` };
+  if (!["accept", "decline"].includes(action)) return null;
   const result = await db().send(new GetCommand({ TableName: table(), Key: key }));
   const invitation = clean(result.Item);
   if (!invitation || invitation.status !== "pending") return null;
   const event = await getEvent(invitation.eventId);
   if (!event || new Date(event.expiresAt) <= new Date()) return { expired: true };
   const status = action === "accept" ? "accepted" : "declined";
-  await db().send(new UpdateCommand({ TableName: table(), Key: key, UpdateExpression: "SET #status = :status, updatedAt = :now", ExpressionAttributeNames: { "#status": "status" }, ExpressionAttributeValues: { ":status": status, ":now": nowIso() } }));
+  await db().send(new UpdateCommand({
+    TableName: table(),
+    Key: key,
+    UpdateExpression: "SET #status = :status, updatedAt = :now",
+    ExpressionAttributeNames: { "#status": "status" },
+    ExpressionAttributeValues: { ":status": status, ":now": nowIso() },
+    ConditionExpression: "#status = :pending",
+  }));
   if (action === "accept" && !(event.contributorIds || []).includes(userId)) {
     await db().send(new UpdateCommand({
       TableName: table(),

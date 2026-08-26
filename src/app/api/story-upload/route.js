@@ -1,7 +1,5 @@
 import { getServerSession } from "next-auth";
-import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { authOptions } from "@/app/lib/auth";
-import { getDynamoDocumentClient, getDynamoTableName } from "@/app/lib/dynamodb";
 import { jsonError, jsonOk, normalizeString } from "@/app/lib/api";
 import { createStory, listStories } from "@/app/lib/storyStore";
 import { verifyS3Object } from "@/app/lib/s3Storage";
@@ -17,7 +15,6 @@ function parseLocation(value) {
 function parseMapsCoordinates(value) {
   const text = String(value || "").trim();
   if (!text) return null;
-
   const direct = text.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
   if (direct) {
     const lat = Number(direct[1]);
@@ -48,11 +45,10 @@ function parseMapsCoordinates(value) {
     }
   }
 
-  const patterns = [
+  for (const pattern of [
     /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
     /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
-  ];
-  for (const pattern of patterns) {
+  ]) {
     const match = text.match(pattern);
     if (!match) continue;
     const lat = Number(match[1]);
@@ -95,11 +91,18 @@ export async function POST(req) {
     const media = await verifyS3Object(mediaKey, session.user.id);
     if (!media || !media.contentType.startsWith("image/")) return jsonError("Invalid story image", 400);
 
+    const verifiedLocation = {
+      ...location,
+      source: "google_maps_manual",
+      verified: true,
+      googleMapsUrl: mapsUrl,
+    };
+
     const result = await createStory({
       userId: session.user.id,
       media,
       mediaType,
-      location,
+      location: verifiedLocation,
       realityScore: 0,
       realityLabel: "google_maps_selected",
       duration: Math.min(Math.max(Number(body.duration) || 15, 5), 60),
@@ -109,18 +112,6 @@ export async function POST(req) {
       timeZone: normalizeString(body.timeZone) || "UTC",
     });
     if (!result) return jsonError("User not found", 404);
-
-    await getDynamoDocumentClient().send(new UpdateCommand({
-      TableName: getDynamoTableName(),
-      Key: { PK: `STORY#${result._id}`, SK: "META" },
-      UpdateExpression: "SET locationSource = :source, locationVerified = :verified, googleMapsUrl = :mapsUrl, updatedAt = :now",
-      ExpressionAttributeValues: {
-        ":source": "google_maps_manual",
-        ":verified": true,
-        ":mapsUrl": mapsUrl,
-        ":now": new Date().toISOString(),
-      },
-    }));
 
     return jsonOk({
       ...result,

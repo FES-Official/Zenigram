@@ -8,6 +8,7 @@ import {
 import {
   addComment,
   createNotification,
+  getPostForViewer,
   getUserById,
   listComments,
   togglePostCommentLike,
@@ -28,8 +29,18 @@ export async function POST(req) {
     }
 
     const user = await getUserById(session.user.id);
-    if (!user) return jsonError("User not found", 404);
+    if (!user || user.accountStatus !== "active") return jsonError("User not found", 404);
+
+    const post = await getPostForViewer(postId, user._id);
+    if (!post) return jsonError("Post is unavailable", 404);
+
     const parentId = normalizeString(body.parentId) || null;
+    if (parentId) {
+      const comments = await listComments(postId, user._id);
+      const parentExists = comments.some((comment) => String(comment._id) === parentId);
+      if (!parentExists) return jsonError("Parent comment not found", 404);
+    }
+
     const result = await addComment(postId, user._id, text, parentId);
     if (!result) return jsonError("Post not found", 404);
     if (result.post.userId !== user._id) {
@@ -54,13 +65,18 @@ export async function POST(req) {
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
-    const postId = searchParams.get("post");
+    const postId = normalizeString(searchParams.get("post"));
     if (!postId) {
       return jsonError("Invalid post", 400, { comments: [] });
     }
 
     const session = await getServerSession(authOptions);
-    const comments = await listComments(postId, session?.user?.id || "");
+    const viewerId = session?.user?.id || "";
+    if (viewerId && !(await getPostForViewer(postId, viewerId))) {
+      return jsonError("Post is unavailable", 404, { comments: [] });
+    }
+
+    const comments = await listComments(postId, viewerId);
     return jsonOk({ comments });
   } catch (error) {
     console.error("Fetch comments error:", error);
@@ -76,8 +92,16 @@ export async function PATCH(req) {
     const postId = normalizeString(body.post);
     const commentId = normalizeString(body.commentId);
     if (!postId || !commentId || body.action !== "like") return jsonError("Invalid comment action", 400);
+
+    if (!(await getPostForViewer(postId, session.user.id))) {
+      return jsonError("Post is unavailable", 404);
+    }
+
     const comment = await togglePostCommentLike(postId, commentId, session.user.id);
     if (!comment) return jsonError("Comment not found", 404);
     return jsonOk({ comment });
-  } catch (error) { return jsonError("Unable to update comment", 500); }
+  } catch (error) {
+    console.error("Comment like error:", error);
+    return jsonError("Unable to update comment", 500);
+  }
 }
