@@ -1,8 +1,7 @@
-import { GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { getDynamoDocumentClient, getDynamoTableName } from "@/app/lib/dynamodb";
-import { getUserRelations, getUsersByIds } from "@/app/lib/socialStore";
+import { getUserRelations, listFeedPosts } from "@/app/lib/socialStore";
 
-const INDEX_NAME = process.env.DYNAMODB_GSI_NAME || "GSI1";
 const client = () => getDynamoDocumentClient();
 const table = () => getDynamoTableName();
 
@@ -12,7 +11,6 @@ function clean(item) {
   delete value.PK; delete value.SK; delete value.GSI1PK; delete value.GSI1SK; delete value.GSI2PK; delete value.GSI2SK;
   return value;
 }
-
 function contentKey(kind, id) {
   return kind === "post" ? { PK: `POST#${id}`, SK: "META" } : { PK: `CLIP#${id}`, SK: "META" };
 }
@@ -22,11 +20,7 @@ export async function setContentAudience(kind, contentId, ownerId, closeOnesOnly
   const result = await client().send(new GetCommand({ TableName: table(), Key: key }));
   if (!result.Item || String(result.Item.userId) !== String(ownerId)) return null;
   const next = Boolean(closeOnesOnly);
-  await client().send(new UpdateCommand({
-    TableName: table(), Key: key,
-    UpdateExpression: "SET closeOnesOnly = :close, updatedAt = :now",
-    ExpressionAttributeValues: { ":close": next, ":now": new Date().toISOString() },
-  }));
+  await client().send(new UpdateCommand({ TableName: table(), Key: key, UpdateExpression: "SET closeOnesOnly = :close, updatedAt = :now", ExpressionAttributeValues: { ":close": next, ":now": new Date().toISOString() } }));
   return { ...clean(result.Item), closeOnesOnly: next };
 }
 
@@ -44,25 +38,9 @@ export async function canViewContent(content, viewerId, ownerUser = null, relati
 }
 
 export async function listVisiblePosts(viewerId, limit = 80) {
-  const raw = await client().send(new QueryCommand({
-    TableName: table(), IndexName: INDEX_NAME,
-    KeyConditionExpression: "GSI1PK = :feed",
-    ExpressionAttributeValues: { ":feed": "FEED#POSTS" },
-    ScanIndexForward: false, Limit: Math.min(200, Math.max(1, Number(limit) || 80)),
-  }));
-  const posts = (raw.Items || []).map(clean);
-  const relations = await getUserRelations(viewerId);
-  const blocked = new Set([...(relations.blockedUsers || []), ...(relations.blockedByUsers || [])].map(String));
+  const [posts, relations] = await Promise.all([listFeedPosts(viewerId, limit), getUserRelations(viewerId)]);
   const close = new Set((relations.closeOnes || []).map(String));
-  const users = await getUsersByIds(posts.map((post) => post.userId));
-  const usersById = new Map(users.map((u) => [String(u._id), u]));
-  return posts.filter((post) => {
-    const owner = usersById.get(String(post.userId));
-    if (!owner || owner.accountStatus !== "active" || blocked.has(String(post.userId))) return false;
-    if (post.closeOnesOnly && !close.has(String(post.userId)) && String(post.userId) !== String(viewerId)) return false;
-    if (owner.ishidden && String(post.userId) !== String(viewerId) && !(relations.supporting || []).map(String).includes(String(post.userId))) return false;
-    return true;
-  });
+  return posts.filter((post) => String(post.userId) === String(viewerId) || !post.closeOnesOnly || close.has(String(post.userId)));
 }
 
 export function filterVisibleClips(clips, viewerId, relations) {
