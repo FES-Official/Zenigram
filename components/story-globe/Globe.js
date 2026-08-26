@@ -224,6 +224,7 @@ export default function StoryGlobe() {
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
   const [stories, setStories] = useState([]);
+  const [storyTab, setStoryTab] = useState("all");
   const [selectedGroupId, setSelectedGroupId] = useState(null);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -339,22 +340,31 @@ export default function StoryGlobe() {
     };
   }, []);
 
+  const visibleStories = useMemo(() => {
+    if (storyTab === "trending") {
+      const highestViews = Math.max(...stories.map((story) => Number(story.viewsCount || 0)), 0);
+      return stories.filter((story) => Number(story.viewsCount || 0) === highestViews);
+    }
+    if (storyTab === "close") return stories.filter((story) => story.closeOne);
+    return stories;
+  }, [stories, storyTab]);
+
   const proximityGroups = useMemo(
-    () => groupStoriesByProximity(stories),
-    [stories],
+    () => groupStoriesByProximity(visibleStories),
+    [visibleStories],
   );
 
-  const activeStoriesCount = stories.length;
+  const activeStoriesCount = visibleStories.length;
 
   const allStoriesGroup = useMemo(
     () => ({
       id: "all-stories",
-      stories: [...stories].sort(
+      stories: [...visibleStories].sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       ),
     }),
-    [stories],
+    [visibleStories],
   );
 
   const selectedGroup = useMemo(() => {
@@ -405,6 +415,7 @@ export default function StoryGlobe() {
               likesCount: updates.likesCount ?? story.likesCount,
               viewsCount: updates.viewsCount ?? story.viewsCount,
               viewerLiked: updates.viewerLiked ?? story.viewerLiked,
+              viewers: updates.viewers ?? story.viewers,
             }
           : story,
       ),
@@ -561,12 +572,31 @@ export default function StoryGlobe() {
             <span className="text-xl font-semibold">{activeStoriesCount}</span>{" "}
             active {activeStoriesCount === 1 ? "story" : "stories"}
           </div>
+          <div className="mx-auto mt-3 flex w-fit overflow-hidden border border-cyan-300/35 bg-black/45 text-[10px] font-semibold uppercase tracking-[0.12em] backdrop-blur">
+            {[
+              ["all", "All"],
+              ["trending", "Trending"],
+              ["close", "Close ones"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setStoryTab(id);
+                  setSelectedGroupId(null);
+                }}
+                className={`px-3 py-2 transition sm:px-4 ${storyTab === id ? "bg-cyan-300/20 text-cyan-100" : "text-white/55 hover:bg-white/10"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </header>
 
         <aside className="absolute left-3 top-40 z-20 w-[min(72vw,190px)] border border-cyan-200/20 bg-[#06101a]/78 p-3 shadow-[0_0_28px_rgba(34,211,238,.08)] backdrop-blur-md md:left-7 md:top-1/2 md:-translate-y-1/2">
           <button
             type="button"
-            disabled={stories.length === 0}
+            disabled={visibleStories.length === 0}
             onClick={() => setSelectedGroupId(allStoriesGroup.id)}
             className="flex w-full items-center justify-center gap-2 border border-cyan-300/50 bg-cyan-300/10 px-3 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-40"
           >

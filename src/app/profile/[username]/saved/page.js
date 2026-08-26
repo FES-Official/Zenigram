@@ -22,6 +22,10 @@ export default function ProfileSavedPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    router.replace("/saved");
+  }, [router]);
+
+  useEffect(() => {
     if (status === "unauthenticated") {
       router.replace("/login");
       return;

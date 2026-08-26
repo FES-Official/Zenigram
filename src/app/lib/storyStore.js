@@ -12,6 +12,7 @@ import {
   getUserById,
   getUserByUsername,
   getUserRelations,
+  getUsersByIds,
   updateEventInvitationNotifications,
   updateUser,
 } from "@/app/lib/socialStore";
@@ -106,7 +107,7 @@ async function getMission(missionId) {
 
 async function hydrateStory(story, viewerId) {
   if (!story) return null;
-  const [user, event, mission, like] = await Promise.all([
+  const [user, event, mission, like, viewerRecords] = await Promise.all([
     getUserById(story.userId),
     getEvent(story.eventId),
     getMission(story.missionId),
@@ -116,7 +117,22 @@ async function hydrateStory(story, viewerId) {
           Key: { PK: `STORY#${story._id}`, SK: `LIKE#${viewerId}` },
         }))
       : Promise.resolve({}),
+    String(viewerId || "") === String(story.userId)
+      ? db().send(new QueryCommand({
+          TableName: table(),
+          KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+          ExpressionAttributeValues: {
+            ":pk": `STORY#${story._id}`,
+            ":prefix": "VIEW#",
+          },
+          ScanIndexForward: false,
+        }))
+      : Promise.resolve({ Items: [] }),
   ]);
+  const viewerIds = (viewerRecords.Items || [])
+    .map((item) => item.userId)
+    .filter((id) => String(id) !== String(story.userId));
+  const viewers = await getUsersByIds(viewerIds);
   return {
     ...story,
     userId: user,
@@ -124,6 +140,16 @@ async function hydrateStory(story, viewerId) {
     mission,
     mediaUrl: await getReadableMediaUrl(story.mediaUrl, story.mediaKey),
     viewerLiked: Boolean(like.Item),
+    viewerIsOwner: String(viewerId || "") === String(story.userId),
+    // Only the creator can receive viewer identities.
+    viewers: viewers.map((viewer) => ({
+      _id: viewer._id,
+      username: viewer.username,
+      profilePic: viewer.profilePic,
+      viewedAt: (viewerRecords.Items || []).find(
+        (item) => String(item.userId) === String(viewer._id),
+      )?.createdAt,
+    })),
   };
 }
 
@@ -342,7 +368,11 @@ export async function listStories(viewerId) {
     ...(relations.blockedUsers || []),
     ...(relations.blockedByUsers || []),
   ]);
-  const hydrated = await Promise.all(stories.map((story) => hydrateStory(story, viewerId)));
+  const closeSet = new Set((relations.closeOnes || []).map(String));
+  const hydrated = await Promise.all(stories.map(async (story) => ({
+    ...(await hydrateStory(story, viewerId)),
+    closeOne: closeSet.has(String(story.userId)),
+  })));
   return hydrated
     .filter((story) => story.userId && story.userId.accountStatus === "active")
     .filter((story) => !blocked.has(story.userId._id))
