@@ -1,10 +1,16 @@
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
 import { normalizeString } from "@/app/lib/api";
+import { canViewContent } from "@/app/lib/audienceStore";
 import { addClipComment, getClip, getUserById, getUserRelations, listClipComments, toggleClipCommentLike } from "@/app/lib/socialStore";
 
-function jsonError(message, status = 400) {
-  return Response.json({ success: false, message }, { status });
+function jsonError(message, status = 400) { return Response.json({ success: false, message }, { status }); }
+
+async function canAccessClip(clip, viewerId) {
+  const owner = await getUserById(clip.userId);
+  if (!owner || owner.accountStatus !== "active") return false;
+  if (!viewerId) return !owner.ishidden && !clip.closeOnesOnly;
+  const relations = await getUserRelations(viewerId);
+  return canViewContent(clip, viewerId, owner, relations);
 }
 
 export async function GET(_req, { params }) {
@@ -15,10 +21,7 @@ export async function GET(_req, { params }) {
     if (!clip) return jsonError("Clip not found", 404);
     if (!(await canAccessClip(clip, session?.user?.id))) return jsonError("Clip not found", 404);
     return Response.json({ success: true, comments: await listClipComments(clipId, session?.user?.id || "") });
-  } catch (error) {
-    console.error("Clip comments fetch error:", error);
-    return jsonError("Unable to load comments", 500);
-  }
+  } catch (error) { console.error("Clip comments fetch error:", error); return jsonError("Unable to load comments", 500); }
 }
 
 export async function POST(req, { params }) {
@@ -34,10 +37,7 @@ export async function POST(req, { params }) {
     const comment = await addClipComment(clipId, session.user.id, cleanText, String(parentId || "") || null);
     if (!comment) return jsonError("Clip not found", 404);
     return Response.json({ success: true, comment }, { status: 201 });
-  } catch (error) {
-    console.error("Clip comment error:", error);
-    return jsonError("Unable to add comment", 500);
-  }
+  } catch (error) { console.error("Clip comment error:", error); return jsonError("Unable to add comment", 500); }
 }
 
 export async function PATCH(req, { params }) {
@@ -47,24 +47,10 @@ export async function PATCH(req, { params }) {
     const { clipId } = await params;
     const { commentId, action } = await req.json();
     if (action !== "like" || !commentId) return jsonError("Invalid comment action", 400);
+    const clip = await getClip(clipId);
+    if (!clip || !(await canAccessClip(clip, session.user.id))) return jsonError("Clip not found", 404);
     const comment = await toggleClipCommentLike(clipId, String(commentId), session.user.id);
     if (!comment) return jsonError("Comment not found", 404);
     return Response.json({ success: true, comment });
   } catch { return jsonError("Unable to update comment", 500); }
-}
-
-async function canAccessClip(clip, viewerId) {
-  const owner = await getUserById(clip.userId);
-  if (!owner || owner.accountStatus !== "active") return false;
-  if (!viewerId) return !owner.ishidden;
-  if (String(viewerId) === String(owner._id)) return true;
-  const [viewerRelations, ownerRelations] = await Promise.all([
-    getUserRelations(viewerId),
-    getUserRelations(owner._id),
-  ]);
-  if (
-    viewerRelations.blockedUsers.includes(owner._id) ||
-    ownerRelations.blockedUsers.includes(viewerId)
-  ) return false;
-  return !owner.ishidden || viewerRelations.supporting.includes(owner._id);
 }
