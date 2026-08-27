@@ -1,6 +1,7 @@
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { getDynamoDocumentClient, getDynamoTableName } from "@/app/lib/dynamodb";
 import { getPost, getUserById, getUserRelations } from "@/app/lib/socialStore";
+import { canViewContent } from "@/app/lib/audienceStore";
 import { hydratePostMedia } from "@/app/lib/s3Storage";
 
 const client = () => getDynamoDocumentClient();
@@ -16,29 +17,12 @@ export async function getSafePostForViewer(postId, viewerId) {
     getUserRelations(viewerId),
   ]);
   if (!owner || owner.accountStatus !== "active") return null;
-
-  const blocked = new Set([
-    ...(relations.blockedUsers || []),
-    ...(relations.blockedByUsers || []),
-  ]);
-  if (blocked.has(String(post.userId))) return null;
-
-  const canView =
-    !owner.ishidden ||
-    String(post.userId) === String(viewerId) ||
-    (relations.supporting || []).includes(String(post.userId));
-  if (!canView) return null;
+  if (!(await canViewContent(post, viewerId, owner, relations))) return null;
 
   const [hydrated, like, saved] = await Promise.all([
     hydratePostMedia(post),
-    client().send(new GetCommand({
-      TableName: table(),
-      Key: { PK: `POST#${postId}`, SK: `LIKE#${viewerId}` },
-    })),
-    client().send(new GetCommand({
-      TableName: table(),
-      Key: { PK: `USER#${viewerId}`, SK: `SAVED#${postId}` },
-    })),
+    client().send(new GetCommand({ TableName: table(), Key: { PK: `POST#${postId}`, SK: `LIKE#${viewerId}` } })),
+    client().send(new GetCommand({ TableName: table(), Key: { PK: `USER#${viewerId}`, SK: `SAVED#${postId}` } })),
   ]);
 
   return {

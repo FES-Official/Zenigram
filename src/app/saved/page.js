@@ -1,12 +1,15 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "../../../components/navbar";
 import { getPostMediaItems } from "../../../components/PostMediaCarousel";
 
 export default function SavedPage() {
   const [posts, setPosts] = useState([]);
+  const [clips, setClips] = useState([]);
+  const [savedType, setSavedType] = useState("posts");
   const [collections, setCollections] = useState([]);
 
   const [newCollectionName, setNewCollectionName] = useState("");
@@ -28,16 +31,18 @@ export default function SavedPage() {
       setLoading(true);
       setPageError("");
 
-      const [savedData, collectionsData] = await Promise.all([
+      const [savedData, collectionsData, clipsData] = await Promise.all([
         requestJson("/api/posts/saved", {
           cache: "no-store",
         }),
         requestJson("/api/saved-collections", {
           cache: "no-store",
         }),
+        requestJson("/api/clips/saved", { cache: "no-store" }),
       ]);
 
       setPosts(Array.isArray(savedData.posts) ? savedData.posts : []);
+      setClips(Array.isArray(clipsData.clips) ? clipsData.clips : []);
       setCollections(
         Array.isArray(collectionsData.collections)
           ? collectionsData.collections
@@ -226,7 +231,7 @@ export default function SavedPage() {
           <div>
             <h1 className="text-3xl font-black">Saved</h1>
             <p className="mt-1 text-sm text-red-100/60">
-              View and organize your saved posts.
+              Your saved posts and clips, in one private library.
             </p>
           </div>
 
@@ -240,6 +245,36 @@ export default function SavedPage() {
             </button>
           )}
         </div>
+
+        <div className="mt-6 flex rounded-xl border border-white/10 bg-black/40 p-1">
+          {[
+            ["posts", `Posts (${posts.length})`],
+            ["clips", `Clips (${clips.length})`],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setSavedType(id)}
+              className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-bold transition ${savedType === id ? "bg-red-600 text-white" : "text-white/45 hover:text-white"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {savedType === "clips" ? (
+          loading ? <SavedPostsSkeleton /> : clips.length ? (
+            <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {clips.map((clip) => (
+                <Link key={clip._id} href={`/clips?clip=${encodeURIComponent(clip._id)}`} className="group relative overflow-hidden rounded-xl border border-white/10 bg-black/40">
+                  {clip.mediaType === "video" ? <video src={clip.mediaUrl} muted playsInline preload="metadata" className="aspect-9/16 w-full object-cover transition group-hover:scale-105" /> : <Image src={clip.mediaUrl || "/user.svg"} alt={clip.caption || "Saved clip"} width={360} height={640} unoptimized className="aspect-9/16 w-full object-cover transition group-hover:scale-105" />}
+                  <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black via-black/30 to-transparent p-3 pt-10"><p className="truncate text-xs font-bold">@{clip.user?.username || "creator"}</p><p className="mt-1 line-clamp-2 text-[11px] text-white/70">{clip.caption || "Saved clip"}</p></div>
+                </Link>
+              ))}
+            </div>
+          ) : <p className="mt-6 rounded-xl border border-white/10 bg-black/60 p-8 text-center text-red-100/60">Saved clips will appear here.</p>
+        ) : (
+          <>
 
         <form
           onSubmit={createCollection}
@@ -401,6 +436,8 @@ export default function SavedPage() {
               />
             ))}
           </div>
+        )}
+          </>
         )}
       </section>
 

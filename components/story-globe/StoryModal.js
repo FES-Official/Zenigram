@@ -569,9 +569,10 @@ export default function StoryModal({
               </button>
             </div>
 
-            <div className="relative z-10 mt-4 grid grid-cols-3 border border-white/10 bg-black/20 p-1 text-xs">
+            <div className={`relative z-10 mt-4 grid border border-white/10 bg-black/20 p-1 text-xs ${story.viewerIsOwner ? "grid-cols-4" : "grid-cols-3"}`}>
               {[
-                ["activity", "Activity"],
+                ["activity", story.viewerIsOwner ? "Status" : "Activity"],
+                ...(story.viewerIsOwner ? [["viewers", `Viewers ${(story.viewers || []).length}`]] : []),
                 ["comments", `Comments ${comments.length}`],
                 ["invite", "Invite"],
               ].map(([id, label]) => (
@@ -628,6 +629,38 @@ export default function StoryModal({
                       </p>
                     )}
                   </div>
+                </div>
+              )}
+
+              {detailTab === "viewers" && story.viewerIsOwner && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200/70">
+                    Viewed your story
+                  </p>
+                  {(story.viewers || []).length ? (
+                    story.viewers.map((viewer) => (
+                      <Link
+                        key={viewer._id}
+                        href={`/profile/${viewer.username}`}
+                        className="flex items-center gap-3 border-b border-white/10 py-2 hover:bg-white/5"
+                      >
+                        <Image
+                          src={viewer.profilePic || "/user.svg"}
+                          alt=""
+                          width={32}
+                          height={32}
+                          unoptimized
+                          className="h-8 w-8 rounded-full object-cover"
+                        />
+                        <span className="text-sm font-medium">@{viewer.username}</span>
+                        <span className="ml-auto text-[10px] text-white/40">
+                          {viewer.viewedAt ? formatStoryTime(viewer.viewedAt) : "Viewed"}
+                        </span>
+                      </Link>
+                    ))
+                  ) : (
+                    <p className="py-8 text-center text-sm text-white/40">No one has viewed this story yet.</p>
+                  )}
                 </div>
               )}
 

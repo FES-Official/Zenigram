@@ -66,14 +66,15 @@ export async function POST(req, { params }) {
     if (!conversation) {
       return NextResponse.json({ error: "Invalid conversation" }, { status: 400 });
     }
-    const recipientId = conversation.participantIds.find(
+    const recipientIds = conversation.participantIds.filter(
       (id) => id !== session.user.id,
     );
-    const relationship = await getBlockRelationship(
-      session.user.id,
-      recipientId,
+    const relationships = await Promise.all(
+      recipientIds.map((recipientId) =>
+        getBlockRelationship(session.user.id, recipientId),
+      ),
     );
-    if (relationship.blocked) {
+    if (relationships.some((relationship) => relationship.blocked)) {
       return NextResponse.json(
         { error: "Messaging is unavailable for this user" },
         { status: 403 },

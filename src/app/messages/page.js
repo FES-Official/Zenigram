@@ -19,6 +19,7 @@ import {
   IoHeartOutline,
   IoMic,
   IoMicOff,
+  IoPeopleOutline,
   IoFlag,
   IoEllipsisVertical,
   IoReturnUpForward,
@@ -40,6 +41,10 @@ export default function MessagesPage() {
   const { data: session } = useSession();
 
   const [conversations, setConversations] = useState([]);
+  const [closeOnes, setCloseOnes] = useState([]);
+  const [showGroupComposer, setShowGroupComposer] = useState(false);
+  const [groupMemberIds, setGroupMemberIds] = useState([]);
+  const [groupName, setGroupName] = useState("");
   const [selectedId, setSelectedId] = useState(() => {
     if (typeof window === "undefined") return "";
 
@@ -107,6 +112,7 @@ export default function MessagesPage() {
           Array.isArray(data.conversations) ? data.conversations : [],
         ),
       );
+      setCloseOnes(Array.isArray(data.closeOnes) ? data.closeOnes : []);
     } catch (requestError) {
       if (!silent) {
         setError(requestError.message || "Unable to load conversations");
@@ -556,6 +562,9 @@ export default function MessagesPage() {
     [currentUserId, selectedConversation],
   );
 
+  const conversationTitle = selectedConversation?.groupTitle || otherParticipant?.username || "Conversation";
+  const isGroupConversation = Boolean(selectedConversation?.isCloseOnesGroup || selectedConversation?.groupTitle);
+
   const blockState = selectedConversation?.blockState || { blocked: false };
   const viewerIsBlocker =
     blockState.blocked && sameId(blockState.blockerId, currentUserId);
@@ -626,6 +635,32 @@ export default function MessagesPage() {
       await loadConversations({ silent: true });
     } catch (requestError) {
       setError(requestError.message || "Unable to start conversation");
+    } finally {
+      setStartingConversationId("");
+    }
+  };
+
+  const createCloseOnesGroup = async () => {
+    if (groupMemberIds.length < 2 || startingConversationId) return;
+    setError("");
+    setStartingConversationId("group");
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memberIds: groupMemberIds, groupName }),
+      });
+      const data = await parseResponse(response);
+      if (!response.ok) throw new Error(data.error || "Unable to create close-ones group");
+      if (!data.conversation?._id) throw new Error("The group could not be created");
+      setSelectedId(data.conversation._id);
+      setShowGroupComposer(false);
+      setGroupMemberIds([]);
+      setGroupName("");
+      setView("chats");
+      await loadConversations({ silent: true });
+    } catch (requestError) {
+      setError(requestError.message || "Unable to create close-ones group");
     } finally {
       setStartingConversationId("");
     }
@@ -1163,6 +1198,53 @@ export default function MessagesPage() {
             </div>
 
             {view === "chats" && (
+              <>
+              <button
+                type="button"
+                onClick={() => setShowGroupComposer((open) => !open)}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-950/35 px-3 py-2.5 text-xs font-semibold uppercase tracking-[0.14em] text-red-100 transition hover:bg-red-900/35"
+              >
+                <IoPeopleOutline />
+                Create close-ones group
+              </button>
+
+              {showGroupComposer && (
+                <div className="mt-3 rounded-xl border border-red-500/25 bg-black/25 p-3">
+                  <input
+                    value={groupName}
+                    onChange={(event) => setGroupName(event.target.value)}
+                    placeholder="Group name (optional)"
+                    maxLength={60}
+                    className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none placeholder:text-white/30 focus:border-red-500/60"
+                  />
+                  <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">Choose at least two close ones</p>
+                  <div className="mt-2 max-h-36 space-y-1 overflow-y-auto">
+                    {closeOnes.length ? closeOnes.map((person) => {
+                      const selected = groupMemberIds.includes(person._id);
+                      return (
+                        <button
+                          key={person._id}
+                          type="button"
+                          onClick={() => setGroupMemberIds((current) => selected ? current.filter((id) => !sameId(id, person._id)) : [...current, person._id])}
+                          className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition ${selected ? "bg-red-600/30 text-white" : "hover:bg-white/5 text-white/70"}`}
+                        >
+                          <Avatar user={person} small />
+                          <span className="min-w-0 flex-1 truncate">@{person.username}</span>
+                          {selected && <IoCheckmark className="text-red-200" />}
+                        </button>
+                      );
+                    }) : <p className="py-3 text-center text-xs text-white/40">Mutually support people to add them here.</p>}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={groupMemberIds.length < 2 || Boolean(startingConversationId)}
+                    onClick={() => void createCloseOnesGroup()}
+                    className="mt-3 w-full rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {startingConversationId === "group" ? "Creating…" : "Create group"}
+                  </button>
+                </div>
+              )}
               <div className="relative mt-5">
                 <IoSearch className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-lg text-red-300/40" />
 
@@ -1221,6 +1303,7 @@ export default function MessagesPage() {
                   </div>
                 )}
               </div>
+              </>
             )}
           </header>
 
@@ -1235,6 +1318,7 @@ export default function MessagesPage() {
                       const participant = conversation.participants?.find(
                         (item) => !sameId(item?._id, currentUserId),
                       );
+                      const conversationName = conversation.groupTitle || participant?.username || "Conversation";
 
                       const isSelected = sameId(selectedId, conversation._id);
                       const unreadCount = getConversationUnreadCount(
@@ -1261,7 +1345,7 @@ export default function MessagesPage() {
                               : "hover:bg-white/4"
                           }`}
                         >
-                          <Avatar user={participant} />
+                            <Avatar user={participant} />
 
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-3">
@@ -1272,7 +1356,7 @@ export default function MessagesPage() {
                                     : "text-white/85"
                                 }`}
                               >
-                                {participant?.username || "Conversation"}
+                                  {conversationName}
                                 {conversation.blockState?.blocked && (
                                   <span className="ml-2 text-xs text-red-400">
                                     Blocked
@@ -1433,11 +1517,11 @@ export default function MessagesPage() {
                   <IoArrowBack />
                 </button>
 
-                <Avatar user={otherParticipant} />
+                {isGroupConversation ? <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-red-600/25 text-red-100"><IoPeopleOutline /></div> : <Avatar user={otherParticipant} />}
 
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold text-white/90">
-                    {otherParticipant?.username || "Conversation"}
+                    {conversationTitle}
                   </p>
 
                   {selectedConversation?.event?.title ? (
@@ -1445,7 +1529,7 @@ export default function MessagesPage() {
                       {selectedConversation.event.title}
                     </p>
                   ) : (
-                    <p className="text-xs text-white/30">Direct conversation</p>
+                    <p className="text-xs text-white/30">{isGroupConversation ? `${selectedConversation?.participants?.length || 0} close ones` : "Direct conversation"}</p>
                   )}
                 </div>
                 <div className="relative">
@@ -1883,7 +1967,7 @@ export default function MessagesPage() {
 
                       <p className="mt-2 text-sm leading-6 text-white/35">
                         Send a message to{" "}
-                        {otherParticipant?.username || "this user"} and begin
+                        {conversationTitle || "this group"} and begin
                         chatting.
                       </p>
                     </div>

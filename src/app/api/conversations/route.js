@@ -3,8 +3,10 @@ import { NextResponse } from "next/server";
 import { authOptions } from "@/app/lib/auth";
 import {
   createConversation,
+  createCloseOnesGroup,
   getBlockRelationship,
   getUserById,
+  getUserRelations,
   listConversations,
 } from "@/app/lib/socialStore";
 
@@ -14,8 +16,17 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const [conversations, relations] = await Promise.all([
+      listConversations(session.user.id),
+      getUserRelations(session.user.id),
+    ]);
+    const closeOnes = await Promise.all((relations.closeOnes || []).map(getUserById));
     return NextResponse.json({
-      conversations: await listConversations(session.user.id),
+      conversations,
+      closeOnes: closeOnes
+        .filter(Boolean)
+        .filter((user) => user.accountStatus === "active")
+        .map((user) => ({ _id: user._id, username: user.username, profilePic: user.profilePic })),
     });
   } catch (error) {
     console.error("Conversation fetch error:", error);
@@ -32,7 +43,21 @@ export async function POST(req) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const { recipientId, eventId } = await req.json();
+    const { recipientId, eventId, memberIds, groupName } = await req.json();
+    if (Array.isArray(memberIds)) {
+      const conversation = await createCloseOnesGroup(
+        session.user.id,
+        memberIds,
+        groupName,
+      );
+      if (!conversation) {
+        return NextResponse.json(
+          { error: "Choose at least two close ones for this group" },
+          { status: 400 },
+        );
+      }
+      return NextResponse.json({ conversation }, { status: 201 });
+    }
     if (!recipientId || recipientId === session.user.id) {
       return NextResponse.json({ error: "Invalid recipient" }, { status: 400 });
     }

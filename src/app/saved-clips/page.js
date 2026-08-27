@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Navbar from "../../../components/navbar";
 
 const DEFAULT_AVATAR = "/user.svg";
@@ -16,9 +17,14 @@ function formatDate(value) {
 }
 
 export default function SavedClipsPage() {
+  const router = useRouter();
   const [clips, setClips] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    router.replace("/saved");
+  }, [router]);
 
   const load = async () => {
     try {

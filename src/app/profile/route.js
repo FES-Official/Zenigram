@@ -42,9 +42,13 @@ export async function POST(req) {
     const connectionsVisible = !user.ishidden || isOwnProfile;
     const contentVisible = !user.ishidden || isOwnProfile || (viewerRelations.supporting || []).includes(String(user._id));
 
-    const [supporterProfiles, supportingProfiles, mutualProfiles, visibleStories, visibleClips] = await Promise.all([
-      connectionsVisible ? getUsersByIds(relations.supporters) : [],
-      connectionsVisible ? getUsersByIds(relations.supporting) : [],
+    const closeSet = new Set((relations.closeOnes || []).map(String));
+    const publicSupporters = (relations.supporters || []).filter((id) => !closeSet.has(String(id)));
+    const publicSupporting = (relations.supporting || []).filter((id) => !closeSet.has(String(id)));
+    const [supporterProfiles, supportingProfiles, closeProfiles, mutualProfiles, visibleStories, visibleClips] = await Promise.all([
+      connectionsVisible ? getUsersByIds(publicSupporters) : [],
+      connectionsVisible ? getUsersByIds(publicSupporting) : [],
+      connectionsVisible ? getUsersByIds(relations.closeOnes || []) : [],
       viewerId && !isOwnProfile
         ? getUsersByIds(relations.supporters.filter((id) => (viewerRelations.supporting || []).includes(id)))
         : [],
@@ -70,11 +74,15 @@ export async function POST(req) {
       website: user.website,
       profilePic: user.profilePic,
       posts: Array.from({ length: user.postCount || 0 }),
-      supporters: relations.supporters,
-      supporting: relations.supporting,
+      // Mutual support is shown as Close ones, not counted in either ordinary list.
+      supporters: publicSupporters,
+      supporting: publicSupporting,
+      closeOnes: connectionsVisible ? relations.closeOnes || [] : [],
+      viewerSupportsProfile: Boolean(viewerId && relations.supporters.includes(viewerId)),
       connectionsVisible,
       supporterProfiles: supporterProfiles.map(safeProfile),
       supportingProfiles: supportingProfiles.map(safeProfile),
+      closeProfiles: closeProfiles.map(safeProfile),
       mutualSupporters: mutualProfiles.slice(0, 3).map(safeProfile),
       mutualSupportersCount: mutualProfiles.length,
       stories: visibleStories,

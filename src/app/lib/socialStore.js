@@ -564,13 +564,18 @@ export async function getUserRelations(userId) {
     }),
   );
   const items = result.Items || [];
+  const supporters = items
+    .filter((item) => item.SK.startsWith("SUPPORTER#"))
+    .map((item) => item.userId);
+  const supporting = items
+    .filter((item) => item.SK.startsWith("SUPPORTING#"))
+    .map((item) => item.userId);
+  const closeOnes = supporting.filter((id) => supporters.includes(id));
   return {
-    supporters: items
-      .filter((item) => item.SK.startsWith("SUPPORTER#"))
-      .map((item) => item.userId),
-    supporting: items
-      .filter((item) => item.SK.startsWith("SUPPORTING#"))
-      .map((item) => item.userId),
+    supporters,
+    supporting,
+    // A close one is derived from mutual support, so it cannot fall out of sync.
+    closeOnes,
     blockedUsers: items
       .filter((item) => item.SK.startsWith("BLOCK#"))
       .map((item) => item.userId),
@@ -1832,11 +1837,12 @@ export async function listConversations(userId) {
   const map = new Map(hydratedUsers.map((item) => [item._id, item]));
   const hydrated = await Promise.all(
     conversations.map(async (conversation) => {
-      const otherUserId = conversation.participantIds.find(
+      const otherUserIds = conversation.participantIds.filter(
         (participantId) => participantId !== userId,
       );
-      const viewerIsBlocker = relations.blockedUsers.includes(otherUserId);
-      const viewerIsBlocked = blockedByUserIds.has(otherUserId);
+      const otherUserId = otherUserIds[0];
+      const viewerIsBlocker = otherUserIds.some((id) => relations.blockedUsers.includes(id));
+      const viewerIsBlocked = otherUserIds.some((id) => blockedByUserIds.has(id));
       const request = viewerIsBlocker
         ? relations.unblockRequests.find(
             (item) =>
@@ -1965,6 +1971,49 @@ export async function createConversation(userId, recipientId, event = null) {
       PK: userPk(participantId),
       SK: "PROFILE",
     })),
+  );
+  return {
+    ...conversation,
+    participants: await Promise.all(users.map((item) => hydrateUserMedia(cleanItem(item)))),
+  };
+}
+
+export async function createCloseOnesGroup(userId, memberIds, groupName = "") {
+  const uniqueMembers = [...new Set((memberIds || []).map(String).filter(Boolean))]
+    .filter((id) => id !== String(userId))
+    .slice(0, 7);
+  if (uniqueMembers.length < 2) return null;
+
+  const relations = await getUserRelations(userId);
+  const closeSet = new Set((relations.closeOnes || []).map(String));
+  if (uniqueMembers.some((id) => !closeSet.has(id))) return null;
+
+  const participantIds = [userId, ...uniqueMembers];
+  const id = newId();
+  const createdAt = now();
+  const conversation = {
+    _id: id,
+    entityType: "conversation",
+    participantIds,
+    groupTitle: String(groupName || "Close ones").trim().slice(0, 60) || "Close ones",
+    isCloseOnesGroup: true,
+    lastMessageAt: createdAt,
+    createdAt,
+    updatedAt: createdAt,
+  };
+  await client().send(new TransactWriteCommand({
+    TransactItems: [
+      { Put: { TableName: table(), Item: { PK: `CONVERSATION#${id}`, SK: "META", ...conversation } } },
+      ...participantIds.map((participantId) => ({
+        Put: {
+          TableName: table(),
+          Item: { PK: userPk(participantId), SK: `CONVERSATION#${id}`, ...conversation },
+        },
+      })),
+    ],
+  }));
+  const users = await batchGet(
+    participantIds.map((participantId) => ({ PK: userPk(participantId), SK: "PROFILE" })),
   );
   return {
     ...conversation,
