@@ -76,3 +76,5 @@ npm run aws:setup
 `aws:setup` safely creates/verifies the table, merges the required S3 CORS rule
 (`ETag` must be exposed for multipart completion), and merges the multipart
 cleanup lifecycle rule.
+
+<!-- CI verification trigger: story location picker fix -->

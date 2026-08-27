@@ -194,7 +194,7 @@ export default function Profile() {
 
         const ownProfile = sameId(sessionId, userData._id);
 
-        const alreadySupporting = hasUserId(userData.supporters, sessionId);
+        const alreadySupporting = Boolean(userData.viewerSupportsProfile) || hasUserId(userData.supporters, sessionId);
 
         const contentIsHidden =
           Boolean(userData.ishidden) && !ownProfile && !alreadySupporting;
@@ -329,7 +329,7 @@ export default function Profile() {
 
   const isOwnProfile = sameId(sessionId, user._id);
 
-  const isSupporting = hasUserId(user.supporters, sessionId);
+  const isSupporting = Boolean(user.viewerSupportsProfile) || hasUserId(user.supporters, sessionId);
 
   const isHiddenContent =
     Boolean(user.ishidden) && !isOwnProfile && !isSupporting;
@@ -520,7 +520,7 @@ export default function Profile() {
               </div>
 
               {/* Statistics */}
-              <div className="grid grid-cols-3 gap-2 border-t border-white/10 pt-5 sm:max-w-lg sm:gap-3">
+              <div className="grid grid-cols-2 gap-2 border-t border-white/10 pt-5 sm:grid-cols-4 sm:max-w-xl sm:gap-3">
                 <Stat label="Posts" value={postCount} />
 
                 <Stat
@@ -538,6 +538,14 @@ export default function Profile() {
                   locked={!user.connectionsVisible}
                   onClick={() =>
                     user.connectionsVisible && setConnectionModal("supporting")
+                  }
+                />
+                <Stat
+                  label="Close ones"
+                  value={user.closeOnes?.length ?? 0}
+                  locked={!user.connectionsVisible}
+                  onClick={() =>
+                    user.connectionsVisible && setConnectionModal("close")
                   }
                 />
               </div>
@@ -655,11 +663,13 @@ export default function Profile() {
       <AnimatePresence>
         {connectionModal && (
           <ConnectionModal
-            title={connectionModal === "supporters" ? "Supporters" : "Supporting"}
+            title={connectionModal === "supporters" ? "Supporters" : connectionModal === "supporting" ? "Supporting" : "Close ones"}
             users={
               connectionModal === "supporters"
                 ? user.supporterProfiles || []
-                : user.supportingProfiles || []
+                : connectionModal === "supporting"
+                  ? user.supportingProfiles || []
+                  : user.closeProfiles || []
             }
             onClose={() => setConnectionModal(null)}
           />

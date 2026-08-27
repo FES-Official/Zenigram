@@ -7,7 +7,8 @@ import {
 } from "@/app/lib/socialStore";
 
 function normalizeEmail(value) {
-  return normalizeString(value).toLowerCase();
+  const normalized = normalizeString(value);
+  return (typeof normalized.normalize === "function" ? normalized.normalize("NFKC") : normalized).toLowerCase();
 }
 
 function normalizeUsername(value) {
@@ -48,8 +49,8 @@ export async function POST(req) {
       return jsonError("Enter a valid email address", 400);
     }
 
-    if (password.length < 6) {
-      return jsonError("Password must be at least 6 characters", 400);
+    if (password.length < 8) {
+      return jsonError("Password must be at least 8 characters", 400);
     }
 
     const [usernameUser, emailUser] = await Promise.all([
@@ -63,7 +64,7 @@ export async function POST(req) {
       return jsonError("That email is already registered", 409);
     }
 
-    const hashedPassword = await bcrypt.hash(password, 11);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     const user = await createUser({
       fullname,
@@ -76,9 +77,6 @@ export async function POST(req) {
       mobile,
     });
 
-    // A successful response must only be returned after the profile is
-    // readable from DynamoDB. This also makes the immediate credentials login
-    // deterministic after account creation.
     const persistedUser = await getUserByEmail(email);
     if (!persistedUser || persistedUser._id !== user._id) {
       throw new Error("DynamoDB user verification failed");

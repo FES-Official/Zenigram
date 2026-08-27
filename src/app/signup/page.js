@@ -107,7 +107,7 @@ export default function RegisterPage() {
         return;
       }
 
-      router.replace("/");
+      router.replace("/login");
       router.refresh();
     } catch (error) {
       console.error("Registration error:", error);
