@@ -1,7 +1,8 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
 import { jsonError, jsonOk, normalizeString } from "@/app/lib/api";
-import { createStory, listStories } from "@/app/lib/storyStore";
+import { createStory } from "@/app/lib/storyStore";
+import { listStoryGlobeFeed } from "@/app/lib/storyFeeds";
 import { verifyS3Object } from "@/app/lib/s3Storage";
 
 function parseLocation(value) {
@@ -25,12 +26,8 @@ function parseMapsCoordinates(value) {
   }
 
   let url;
-  try {
-    url = new URL(text);
-  } catch {
-    return null;
-  }
-
+  try { url = new URL(text); } catch { return null; }
+  if (url.protocol !== "https:") return null;
   const host = url.hostname.toLowerCase();
   const googleHost = host === "google.com" || host.endsWith(".google.com") || host === "google.co.in" || host.endsWith(".google.co.in");
   if (!googleHost) return null;
@@ -125,10 +122,15 @@ export async function POST(req) {
   }
 }
 
-export async function GET() {
+export async function GET(req) {
   try {
     const session = await getServerSession(authOptions);
-    return jsonOk({ stories: await listStories(session?.user?.id) });
+    const url = new URL(req.url);
+    const tab = normalizeString(url.searchParams.get("tab")) || "all";
+    const limit = Number(url.searchParams.get("limit") || 50);
+    const cursor = normalizeString(url.searchParams.get("cursor")) || null;
+    const result = await listStoryGlobeFeed({ viewerId: session?.user?.id || null, tab, limit, cursor });
+    return jsonOk(result);
   } catch (error) {
     console.error("Story fetch error:", error);
     return jsonError("Unable to load stories", 500);
