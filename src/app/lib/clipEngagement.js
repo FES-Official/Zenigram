@@ -34,18 +34,18 @@ export async function getClipViewerEngagement(clipId, userId) {
   return { liked: Boolean(like.Item), viewed: Boolean(view.Item) };
 }
 
-async function applyLikeState(clipId, userId, liked, legacyCount = 0) {
+async function applyLikeState(clipId, userId, liked) {
   const key = likeKey(clipId, userId);
   const timestamp = new Date().toISOString();
   await client().send(new TransactWriteCommand({
     TransactItems: liked
       ? [
           { Put: { TableName: table(), Item: { ...key, entityType: "clipLike", clipId, userId, createdAt: timestamp }, ConditionExpression: "attribute_not_exists(PK)" } },
-          { Update: { TableName: table(), Key: clipKey(clipId), UpdateExpression: "SET likesCount = if_not_exists(likesCount, :legacy) + :one, feedScore = if_not_exists(feedScore, :zero) + :score, updatedAt = :now", ExpressionAttributeValues: { ":legacy": Math.max(0, Number(legacyCount)), ":zero": 0, ":one": 1, ":score": 3, ":now": timestamp }, ConditionExpression: "attribute_exists(PK)" } },
+          { Update: { TableName: table(), Key: clipKey(clipId), UpdateExpression: "SET likesCount = if_not_exists(likesCount, :zero) + :one, feedScore = if_not_exists(feedScore, :zero) + :score, updatedAt = :now", ExpressionAttributeValues: { ":zero": 0, ":one": 1, ":score": 3, ":now": timestamp }, ConditionExpression: "attribute_exists(PK)" } },
         ]
       : [
           { Delete: { TableName: table(), Key: key, ConditionExpression: "attribute_exists(PK)" } },
-          { Update: { TableName: table(), Key: clipKey(clipId), UpdateExpression: "SET likesCount = if_not_exists(likesCount, :legacy) + :minusOne, feedScore = if_not_exists(feedScore, :zero) + :minusScore, updatedAt = :now", ExpressionAttributeValues: { ":legacy": Math.max(0, Number(legacyCount)), ":zero": 0, ":minusOne": -1, ":minusScore": -3, ":now": timestamp }, ConditionExpression: "attribute_exists(PK) AND if_not_exists(likesCount, :legacy) >= :one" } },
+          { Update: { TableName: table(), Key: clipKey(clipId), UpdateExpression: "ADD likesCount :minusOne, feedScore :minusScore SET updatedAt = :now", ExpressionAttributeValues: { ":minusOne": -1, ":minusScore": -3, ":one": 1, ":now": timestamp }, ConditionExpression: "attribute_exists(PK) AND likesCount >= :one" } },
         ],
   }));
 }
@@ -56,11 +56,11 @@ export async function toggleClipLikeAtomic(clipId, userId) {
   if (!clip) throw new Error("Clip not found");
   const current = await getClipViewerEngagement(clipId, userId);
   const desired = !current.liked;
-  const legacyCount = Array.isArray(clip.likes) ? clip.likes.length : 0;
+  if (!desired) await ensureCounter(clipId, "likesCount", Array.isArray(clip.likes) ? clip.likes.length : 0);
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      await applyLikeState(clipId, userId, desired, legacyCount);
+      await applyLikeState(clipId, userId, desired);
       break;
     } catch (error) {
       if (!isConditionalFailure(error) || attempt === 2) throw error;
@@ -96,8 +96,10 @@ export async function recordClipViewAtomic(clipId, userId) {
     }));
   } catch (error) {
     if (!isConditionalFailure(error)) throw error;
-    const updated = await getClip(clipId);
-    const existing = await client().send(new GetCommand({ TableName: table(), Key: key, ConsistentRead: true }));
+    const [updated, existing] = await Promise.all([
+      getClip(clipId),
+      client().send(new GetCommand({ TableName: table(), Key: key, ConsistentRead: true })),
+    ]);
     return {
       recorded: false,
       viewed: Boolean(existing.Item),
