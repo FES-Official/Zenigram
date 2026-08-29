@@ -71,7 +71,7 @@ async function ensureGoogleUser(user, profile) {
       lastLogin: new Date().toISOString(),
     });
   } else {
-    if (dbUser.accountStatus === "deactivated") return null;
+    if (dbUser.accountStatus !== "active") return null;
 
     const updates = {
       email,
@@ -120,14 +120,14 @@ export const authOptions = {
         if (!identifier || typeof password !== "string") return null;
         const user = await getUserByIdentifier(identifier);
 
-        if (!user?.password || user.accountStatus === "deactivated") return null;
+        if (!user?.password || user.accountStatus !== "active") return null;
         const isValid = await bcrypt.compare(password, user.password);
         if (!isValid) return null;
 
         const updated = await updateUser(user._id, {
           lastLogin: new Date().toISOString(),
         });
-        return updated ? authUser(updated) : null;
+        return updated?.accountStatus === "active" ? authUser(updated) : null;
       },
     }),
   ],
@@ -136,7 +136,7 @@ export const authOptions = {
     async signIn({ user, account, profile }) {
       if (account?.provider !== "google") return true;
       const dbUser = await ensureGoogleUser(user, profile);
-      if (!dbUser) return false;
+      if (!dbUser || dbUser.accountStatus !== "active") return false;
       Object.assign(user, authUser(dbUser));
       return true;
     },
@@ -148,12 +148,12 @@ export const authOptions = {
       if (!dbUser && token.id) dbUser = await getUserById(token.id);
       if (!dbUser && token.email) dbUser = await findUserByEmail(token.email);
 
-      if (dbUser && dbUser.accountStatus === "active") {
+      if (dbUser?.accountStatus === "active") {
         const normalizedUser = authUser(dbUser);
         token.id = normalizedUser.id;
         token.name = normalizedUser.name;
         token.email = normalizedUser.email;
-      } else if (dbUser?.accountStatus === "deactivated") {
+      } else {
         token.id = "";
         token.name = "";
         token.email = "";
