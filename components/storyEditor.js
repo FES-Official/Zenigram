@@ -505,8 +505,9 @@ export default function StoryEditor() {
 
   const shareStory = async (location = selectedLocation) => {
     if (!images.length || isPosting) return;
-    if (!location) { setShowLocationPicker(true); return; }
+    
     try {
+      if (!location) { setShowLocationPicker(true); return; }
       setIsPosting(true);
       setPostStage("Creating your story…");
       setIsExporting(true);
