@@ -8,7 +8,7 @@ import StoryMarker from "./StoryMarker";
 import StoryModal from "./StoryModal";
 import "mapbox-gl/dist/mapbox-gl.css";
 
-const DEFAULT_VIEW_STATE = { longitude: 15, latitude: 18, zoom: 1.65, pitch: 18, bearing: -8 };
+const DEFAULT_VIEW_STATE = { longitude: 15, latitude: 18, zoom: 0, pitch: 18, bearing: -8 };
 const SATELLITE_MAP_STYLE = "mapbox://styles/mapbox/satellite-streets-v12";
 const STORY_GROUP_RADIUS_METERS = 700;
 
