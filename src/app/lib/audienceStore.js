@@ -28,19 +28,23 @@ function normalizeIds(values = []) {
 }
 
 export async function setContentAudience(kind, contentId, ownerId, closeOnesOnly) {
+  if (!["post", "clip"].includes(kind) || !contentId || !ownerId) return null;
   const key = contentKey(kind, contentId);
-  const result = await client().send(new GetCommand({ TableName: table(), Key: key, ConsistentRead: true }));
-  if (!result.Item || String(result.Item.userId) !== String(ownerId)) return null;
+  const now = new Date().toISOString();
   const next = Boolean(closeOnesOnly);
-  await client().send(new UpdateCommand({
+  const result = await client().send(new UpdateCommand({
     TableName: table(),
     Key: key,
     UpdateExpression: "SET closeOnesOnly = :close, updatedAt = :now",
-    ExpressionAttributeValues: { ":close": next, ":now": new Date().toISOString() },
+    ExpressionAttributeValues: {
+      ":close": next,
+      ":now": now,
+      ":owner": String(ownerId),
+    },
     ConditionExpression: "attribute_exists(PK) AND userId = :owner",
-    ExpressionAttributeValues: { ":close": next, ":now": new Date().toISOString(), ":owner": ownerId },
+    ReturnValues: "ALL_NEW",
   }));
-  return { ...clean(result.Item), closeOnesOnly: next };
+  return clean(result.Attributes);
 }
 
 export async function canViewContent(content, viewerId, ownerUser = null, relations = null) {
