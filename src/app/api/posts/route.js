@@ -18,7 +18,7 @@ export async function POST(req) {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) return jsonError("Unauthorized", 401);
     const user = await getUserById(session.user.id);
-    if (!user) return jsonError("User not found", 404);
+    if (!user || user.accountStatus !== "active") return jsonError("User not found", 404);
 
     const body = await req.json();
     const caption = normalizeString(body.caption);
@@ -34,16 +34,29 @@ export async function POST(req) {
     if (!caption || caption.length > 2200) return jsonError("Caption required", 400);
     if (!requestedMedia.length) return jsonError("Media is required", 400);
 
-    const verified = await Promise.all(requestedMedia.map((item) => verifyS3Object(item.key, session.user.id)));
+    const verified = await Promise.all(
+      requestedMedia.map((item) => verifyS3Object(item?.key, session.user.id)),
+    );
     if (verified.some((item) => !item)) return jsonError("One or more S3 objects could not be verified", 400);
+
     const mediaItems = verified.map((item, index) => {
-      const type = requestedMedia[index].type;
-      const matches = (type === "image" && item.contentType.startsWith("image/")) || (type === "video" && item.contentType.startsWith("video/"));
+      const type = requestedMedia[index]?.type;
+      const matches =
+        (type === "image" && item.contentType.startsWith("image/")) ||
+        (type === "video" && item.contentType.startsWith("video/"));
       if (!matches) throw new Error("Uploaded media type does not match");
       return { key: item.key, url: item.url, type, provider: "s3" };
     });
 
-    const newPost = await createPost({ userId: user._id, mediaItems, caption, presentation, carouselStyle, gridLayout, aspectRatio });
+    const newPost = await createPost({
+      userId: user._id,
+      mediaItems,
+      caption,
+      presentation,
+      carouselStyle,
+      gridLayout,
+      aspectRatio,
+    });
     const post = await setContentAudience("post", newPost._id, user._id, closeOnesOnly);
     store.delete("zenigram_post_audience");
 
@@ -58,10 +71,10 @@ export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) return jsonError("Unauthorized", 401);
-    const post = await listVisiblePosts(session.user.id);
-    return NextResponse.json({ post }, { status: 200 });
-  } catch (err) {
-    console.error("Posts fetch error:", err);
-    return NextResponse.json({ error: "Database connection failed", message: err.message }, { status: 500 });
+    const posts = await listVisiblePosts(session.user.id);
+    return jsonOk({ posts });
+  } catch (error) {
+    console.error("Posts fetch error:", error);
+    return jsonError("Unable to load posts", 500);
   }
 }
