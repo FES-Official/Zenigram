@@ -1,7 +1,7 @@
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { normalizeString } from "@/app/lib/api";
+import { normalizeEmail, normalizeString } from "@/app/lib/api";
 import {
   createUser,
   getUserByEmail,
@@ -10,11 +10,6 @@ import {
   getUserByUsername,
   updateUser,
 } from "@/app/lib/socialStore";
-
-function normalizeEmail(value) {
-  const normalized = normalizeString(value);
-  return (typeof normalized.normalize === "function" ? normalized.normalize("NFKC") : normalized).toLowerCase();
-}
 
 function usernameBase(value) {
   const normalized = normalizeString(value)
@@ -30,12 +25,13 @@ function usernameBase(value) {
 
 async function createUniqueUsername(value) {
   const base = usernameBase(value);
-  let username = base;
-  let suffix = 1;
-  while (await getUserByUsername(username)) {
-    username = `${base.slice(0, 20)}${suffix++}`.slice(0, 24);
+  for (let suffix = 0; suffix < 10000; suffix += 1) {
+    const username = suffix === 0
+      ? base
+      : `${base.slice(0, 20 - String(suffix).length)}${suffix}`.slice(0, 24);
+    if (!(await getUserByUsername(username))) return username;
   }
-  return username;
+  throw new Error("Unable to allocate a username");
 }
 
 function authUser(user) {
@@ -47,9 +43,9 @@ function authUser(user) {
 }
 
 async function findUserByEmail(email) {
-  const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) return null;
-  return getUserByEmail(normalizedEmail);
+  const normalized = normalizeEmail(email);
+  if (!normalized) return null;
+  return getUserByEmail(normalized);
 }
 
 async function ensureGoogleUser(user, profile) {
@@ -61,7 +57,6 @@ async function ensureGoogleUser(user, profile) {
     const username = await createUniqueUsername(
       profile?.email?.split("@")[0] || profile?.name || user.name,
     );
-
     dbUser = await createUser({
       fullname: normalizeString(profile?.name || user.name) || username,
       username,
@@ -72,7 +67,6 @@ async function ensureGoogleUser(user, profile) {
     });
   } else {
     if (dbUser.accountStatus !== "active") return null;
-
     const updates = {
       email,
       lastLogin: new Date().toISOString(),
@@ -94,43 +88,51 @@ async function ensureGoogleUser(user, profile) {
   return dbUser;
 }
 
-export const authOptions = {
-  providers: [
+const providers = [
+  CredentialsProvider({
+    name: "Credentials",
+    credentials: {
+      username: {
+        label: "Username or email",
+        type: "text",
+        placeholder: "Username or email",
+      },
+      password: {
+        label: "Password",
+        type: "password",
+        placeholder: "Password",
+      },
+    },
+    async authorize(credentials) {
+      const identifier = normalizeString(credentials?.username).toLowerCase();
+      const password = credentials?.password;
+      if (!identifier || typeof password !== "string" || password.length > 128) return null;
+
+      const user = await getUserByIdentifier(identifier);
+      if (!user?.password || user.accountStatus !== "active") return null;
+
+      const isValid = await bcrypt.compare(password, user.password);
+      if (!isValid) return null;
+
+      const updated = await updateUser(user._id, {
+        lastLogin: new Date().toISOString(),
+      });
+      return updated?.accountStatus === "active" ? authUser(updated) : null;
+    },
+  }),
+];
+
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  providers.unshift(
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     }),
-    CredentialsProvider({
-      name: "Credentials",
-      credentials: {
-        username: {
-          label: "Username or email",
-          type: "text",
-          placeholder: "Username or email",
-        },
-        password: {
-          label: "Password",
-          type: "password",
-          placeholder: "Password",
-        },
-      },
-      async authorize(credentials) {
-        const identifier = normalizeString(credentials?.username).toLowerCase();
-        const password = credentials?.password;
-        if (!identifier || typeof password !== "string") return null;
-        const user = await getUserByIdentifier(identifier);
+  );
+}
 
-        if (!user?.password || user.accountStatus !== "active") return null;
-        const isValid = await bcrypt.compare(password, user.password);
-        if (!isValid) return null;
-
-        const updated = await updateUser(user._id, {
-          lastLogin: new Date().toISOString(),
-        });
-        return updated?.accountStatus === "active" ? authUser(updated) : null;
-      },
-    }),
-  ],
+export const authOptions = {
+  providers,
   session: { strategy: "jwt" },
   callbacks: {
     async signIn({ user, account, profile }) {
@@ -158,7 +160,6 @@ export const authOptions = {
         token.name = "";
         token.email = "";
       }
-
       return token;
     },
 
