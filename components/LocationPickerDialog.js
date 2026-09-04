@@ -4,13 +4,6 @@ import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-const GOOGLE_MAPS_HOSTS = new Set([
-  "google.com",
-  "www.google.com",
-  "maps.google.com",
-  "www.google.co.in",
-]);
-
 function roundCoordinate(value) {
   return Number(Number(value).toFixed(6));
 }
@@ -46,12 +39,6 @@ function extractCoordinatePair(value) {
     return null;
   }
 
-  const host = url.hostname.toLowerCase();
-  const isGoogleHost =
-    GOOGLE_MAPS_HOSTS.has(host) ||
-    host.endsWith(".google.com") ||
-    host.endsWith(".google.co.in");
-  if (!isGoogleHost) return null;
 
   const q =
     url.searchParams.get("q") ||
@@ -131,8 +118,6 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
     onSelect({
       lat: selection.lat,
       lng: selection.lng,
-      source: "google_maps_manual",
-      googleMapsUrl: googleMapsUrl.trim(),
       verified: true,
     });
   };
