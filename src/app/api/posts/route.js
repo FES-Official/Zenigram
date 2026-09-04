@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { cookies } from "next/headers";
 import { authOptions } from "@/app/lib/auth";
@@ -60,7 +59,10 @@ export async function POST(req) {
     const post = await setContentAudience("post", newPost._id, user._id, closeOnesOnly);
     store.delete("zenigram_post_audience");
 
-    return jsonOk({ message: "Post uploaded", post: post || { ...newPost, closeOnesOnly } }, 201);
+    return jsonOk({
+      message: "Post uploaded",
+      post: post || { ...newPost, closeOnesOnly },
+    }, 201);
   } catch (error) {
     console.error("POST CREATE ERROR:", error);
     return jsonError("Failed to upload post", 500);
@@ -72,7 +74,7 @@ export async function GET() {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) return jsonError("Unauthorized", 401);
     const posts = await listVisiblePosts(session.user.id);
-    return jsonOk({ posts });
+    return jsonOk({ posts, post: posts });
   } catch (error) {
     console.error("Posts fetch error:", error);
     return jsonError("Unable to load posts", 500);
