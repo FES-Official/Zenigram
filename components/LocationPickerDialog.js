@@ -2,7 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 function roundCoordinate(value) {
   return Number(Number(value).toFixed(6));
@@ -19,56 +19,31 @@ function validCoordinates(lat, lng) {
   );
 }
 
-function extractCoordinatePair(value) {
+function parseCoordinatePair(value) {
   const text = String(value || "").trim();
   if (!text) return null;
 
-  const direct = text.match(
+  const match = text.match(
     /^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/,
   );
-  if (direct) {
-    const lat = Number(direct[1]);
-    const lng = Number(direct[2]);
-    return validCoordinates(lat, lng) ? { lat, lng } : null;
-  }
+  if (!match) return null;
 
-  let url;
-  try {
-    url = new URL(text);
-  } catch {
-    return null;
-  }
-
-
-  const q =
-    url.searchParams.get("q") ||
-    url.searchParams.get("query") ||
-    url.searchParams.get("center");
-  const fromQuery = q ? extractCoordinatePair(q) : null;
-  if (fromQuery) return fromQuery;
-
-  for (const pattern of [
-    /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
-    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
-  ]) {
-    const match = text.match(pattern);
-    if (!match) continue;
-    const lat = Number(match[1]);
-    const lng = Number(match[2]);
-    if (validCoordinates(lat, lng)) return { lat, lng };
-  }
-
-  return null;
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  return validCoordinates(lat, lng)
+    ? { lat: roundCoordinate(lat), lng: roundCoordinate(lng) }
+    : null;
 }
 
 const subscribe = () => () => {};
 
 export default function LocationPickerDialog({ onClose, onSelect }) {
   const mounted = useSyncExternalStore(subscribe, () => true, () => false);
-  const [googleMapsUrl, setGoogleMapsUrl] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
   const [selection, setSelection] = useState(null);
   const [error, setError] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
+  const [locating, setLocating] = useState(false);
 
   useEffect(() => {
     const handleEscape = (event) => {
@@ -78,48 +53,67 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
     return () => document.removeEventListener("keydown", handleEscape);
   }, [onClose]);
 
-  const mapsPreviewUrl = useMemo(
-    () =>
-      selection
-        ? `https://www.google.com/maps/@${selection.lat},${selection.lng},17z`
-        : "https://www.google.com/maps",
-    [selection],
-  );
-
-  const parseGoogleMapsLink = (value = googleMapsUrl) => {
-    const parsed = extractCoordinatePair(value);
-    if (!parsed) {
+  const applySelection = (lat, lng) => {
+    if (!validCoordinates(lat, lng)) {
       setSelection(null);
-      setConfirmed(false);
-      setError(
-        "Paste a valid Google Maps link containing latitude and longitude, or enter the coordinates shown by Google Maps.",
-      );
+      setError("Enter a valid latitude (-90 to 90) and longitude (-180 to 180).");
+      return false;
+    }
+
+    const next = {
+      lat: roundCoordinate(lat),
+      lng: roundCoordinate(lng),
+    };
+    setSelection(next);
+    setLatitude(String(next.lat));
+    setLongitude(String(next.lng));
+    setError("");
+    return true;
+  };
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setError("Location access is not available in this browser.");
       return;
     }
 
-    setSelection({
-      lat: roundCoordinate(parsed.lat),
-      lng: roundCoordinate(parsed.lng),
-    });
-    setConfirmed(false);
+    setLocating(true);
     setError("");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        applySelection(coords.latitude, coords.longitude);
+        setLocating(false);
+      },
+      (geoError) => {
+        setLocating(false);
+        setError(
+          geoError.code === geoError.PERMISSION_DENIED
+            ? "Location permission was denied. Enter the coordinates manually instead."
+            : "Unable to read your current location. Enter the coordinates manually instead.",
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+    );
+  };
+
+  const readCoordinates = () => {
+    const parsed = parseCoordinatePair(`${latitude},${longitude}`);
+    if (!parsed) {
+      setSelection(null);
+      setError("Enter a valid latitude and longitude.");
+      return;
+    }
+    applySelection(parsed.lat, parsed.lng);
   };
 
   const save = () => {
-    if (!selection || !validCoordinates(selection.lat, selection.lng)) {
-      setError("A valid Google Maps location is required before posting.");
-      return;
-    }
-    if (!confirmed) {
-      setError("Please confirm that you checked the exact location in Google Maps.");
+    const parsed = selection || parseCoordinatePair(`${latitude},${longitude}`);
+    if (!parsed) {
+      setError("Select or enter a valid latitude and longitude before continuing.");
       return;
     }
 
-    onSelect({
-      lat: selection.lat,
-      lng: selection.lng,
-      verified: true,
-    });
+    onSelect({ lat: parsed.lat, lng: parsed.lng });
   };
 
   if (!mounted) return null;
@@ -130,7 +124,7 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       onClick={onClose}
-      className="fixed inset-0 z-99999 flex items-center justify-center bg-black/85 p-3 backdrop-blur-md"
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/85 p-3 backdrop-blur-md"
     >
       <motion.section
         initial={{ opacity: 0, y: 20, scale: 0.98 }}
@@ -138,20 +132,20 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Verify story location with Google Maps"
-        className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-red-500/20 bg-[#100607] text-white shadow-2xl"
+        aria-label="Select story coordinates"
+        className="flex max-h-[94vh] w-full max-w-xl flex-col overflow-hidden rounded-[28px] border border-red-500/20 bg-[#100607] text-white shadow-2xl"
       >
         <header className="shrink-0 border-b border-white/10 px-5 py-4 sm:px-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[.24em] text-red-400">
-                Required before posting
+                Story location
               </p>
               <h2 className="mt-1 text-xl font-black sm:text-2xl">
-                Verify story location
+                Place your story on the globe
               </h2>
               <p className="mt-1 max-w-xl text-xs leading-5 text-zinc-500">
-                Find the exact place in Google Maps yourself, then paste the Google Maps link here.
+                Zenigram only needs the latitude and longitude. No map-link verification is required.
               </p>
             </div>
             <button
@@ -166,117 +160,113 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
         </header>
 
         <div className="min-h-0 overflow-y-auto p-4 sm:p-6">
-          <div className="grid gap-4 lg:grid-cols-[1.1fr_.9fr]">
-            <div className="space-y-3">
-              <div className="rounded-2xl border border-red-500/15 bg-red-950/20 p-4">
-                <p className="text-sm font-bold">1. Find the exact location</p>
-                <p className="mt-1 text-xs leading-5 text-zinc-400">
-                  Open Google Maps, find the exact place, then copy the Maps URL.
-                </p>
-                <a
-                  href="https://www.google.com/maps"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-flex rounded-xl bg-red-600 px-4 py-2 text-xs font-bold transition hover:bg-red-500"
-                >
-                  Open Google Maps
-                </a>
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-red-500/15 bg-red-950/20 p-4">
+              <p className="text-sm font-bold">Use your current location</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-400">
+                Your browser can provide the coordinates directly. Zenigram stores the numeric coordinates used by the globe.
+              </p>
+              <button
+                type="button"
+                onClick={useCurrentLocation}
+                disabled={locating}
+                className="mt-3 inline-flex rounded-xl bg-red-600 px-4 py-2 text-xs font-bold transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {locating ? "Getting location…" : "Use my current location"}
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+              <p className="text-sm font-bold">Or enter coordinates manually</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                Latitude must be between -90 and 90. Longitude must be between -180 and 180.
+              </p>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-[11px] font-semibold uppercase tracking-[.16em] text-zinc-500">
+                    Latitude
+                  </span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    min="-90"
+                    max="90"
+                    value={latitude}
+                    onChange={(event) => {
+                      setLatitude(event.target.value);
+                      setSelection(null);
+                      setError("");
+                    }}
+                    placeholder="23.259900"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-3 text-sm text-white outline-none focus:border-red-500/50"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-[11px] font-semibold uppercase tracking-[.16em] text-zinc-500">
+                    Longitude
+                  </span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    min="-180"
+                    max="180"
+                    value={longitude}
+                    onChange={(event) => {
+                      setLongitude(event.target.value);
+                      setSelection(null);
+                      setError("");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") readCoordinates();
+                    }}
+                    placeholder="77.412600"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-3 text-sm text-white outline-none focus:border-red-500/50"
+                  />
+                </label>
               </div>
 
-              <label className="block rounded-2xl border border-white/10 bg-black/30 p-4">
-                <span className="text-sm font-bold">2. Paste Google Maps link</span>
-                <textarea
-                  value={googleMapsUrl}
-                  onChange={(event) => {
-                    setGoogleMapsUrl(event.target.value);
-                    setConfirmed(false);
-                    setError("");
-                  }}
-                  placeholder="https://www.google.com/maps/@23.2599,77.4126,17z"
-                  rows={3}
-                  className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-black/50 px-3 py-3 text-xs text-white outline-none focus:border-red-500/50"
-                />
-                <button
-                  type="button"
-                  onClick={() => parseGoogleMapsLink()}
-                  className="mt-3 w-full rounded-xl border border-red-500/30 bg-red-600/15 px-4 py-2.5 text-xs font-bold text-red-200 transition hover:bg-red-600/25"
-                >
-                  Read coordinates
-                </button>
-              </label>
+              <button
+                type="button"
+                onClick={readCoordinates}
+                className="mt-3 w-full rounded-xl border border-red-500/30 bg-red-600/15 px-4 py-2.5 text-xs font-bold text-red-200 transition hover:bg-red-600/25"
+              >
+                Use these coordinates
+              </button>
+            </div>
 
-              <label className="block rounded-2xl border border-white/10 bg-black/30 p-4">
-                <span className="text-sm font-bold">3. Coordinate fallback</span>
-                <p className="mt-1 text-[11px] leading-4 text-zinc-500">
-                  Enter the exact latitude, longitude pair displayed by Google Maps.
-                </p>
-                <input
-                  type="text"
-                  placeholder="23.259900, 77.412600"
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      const value = event.currentTarget.value;
-                      setGoogleMapsUrl(value);
-                      parseGoogleMapsLink(value);
-                    }
-                  }}
-                  className="mt-3 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white outline-none focus:border-red-500/50"
-                />
-              </label>
+            {error && (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs leading-5 text-red-300">
+                {error}
+              </div>
+            )}
 
-              {error && (
-                <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs leading-5 text-red-300">
-                  {error}
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[.2em] text-zinc-500">
+                Selected coordinates
+              </p>
+              {selection ? (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div className="rounded-xl bg-white/5 p-3">
+                    <p className="text-[10px] text-zinc-500">Latitude</p>
+                    <p className="mt-1 text-sm font-black">{selection.lat.toFixed(6)}</p>
+                  </div>
+                  <div className="rounded-xl bg-white/5 p-3">
+                    <p className="text-[10px] text-zinc-500">Longitude</p>
+                    <p className="mt-1 text-sm font-black">{selection.lng.toFixed(6)}</p>
+                  </div>
                 </div>
+              ) : (
+                <p className="mt-2 text-sm text-zinc-500">No coordinates selected yet.</p>
               )}
             </div>
 
-            <div className="space-y-3">
-              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
-                <iframe
-                  title="Google Maps location preview"
-                  src={mapsPreviewUrl}
-                  className="h-64 w-full border-0 sm:h-72"
-                  loading="lazy"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                <p className="text-[10px] font-bold uppercase tracking-[.2em] text-zinc-500">
-                  Selected coordinates
-                </p>
-                {selection ? (
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <div className="rounded-xl bg-white/5 p-3">
-                      <p className="text-[10px] text-zinc-500">Latitude</p>
-                      <p className="mt-1 text-sm font-black">{selection.lat.toFixed(6)}</p>
-                    </div>
-                    <div className="rounded-xl bg-white/5 p-3">
-                      <p className="text-[10px] text-zinc-500">Longitude</p>
-                      <p className="mt-1 text-sm font-black">{selection.lng.toFixed(6)}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="mt-2 text-sm text-zinc-500">No location verified yet.</p>
-                )}
-              </div>
-
-              <label className="flex cursor-pointer gap-3 rounded-2xl border border-red-500/20 bg-red-950/20 p-4">
-                <input
-                  type="checkbox"
-                  checked={confirmed}
-                  onChange={(event) => setConfirmed(event.target.checked)}
-                  className="mt-0.5 h-4 w-4 accent-red-600"
-                />
-                <span className="text-xs leading-5 text-zinc-300">
-                  I checked this exact point in Google Maps and confirm these coordinates are the location I want attached to this story.
-                </span>
-              </label>
-
-              <p className="text-[11px] leading-4 text-zinc-600">
-                This confirms the selected Google Maps coordinates; it does not prove physical presence.
-              </p>
-            </div>
+            <p className="text-[11px] leading-4 text-zinc-600">
+              These coordinates are used only to position the story on Zenigram’s global story map.
+            </p>
           </div>
         </div>
 
@@ -291,10 +281,10 @@ export default function LocationPickerDialog({ onClose, onSelect }) {
           <button
             type="button"
             onClick={save}
-            disabled={!selection || !confirmed}
+            disabled={!selection}
             className="rounded-full bg-red-600 px-5 py-2 text-sm font-bold transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Verify location & continue
+            Select location & continue
           </button>
         </footer>
       </motion.section>
