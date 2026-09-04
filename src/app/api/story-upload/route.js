@@ -87,6 +87,7 @@ export async function POST(req) {
 
     const media = await verifyS3Object(mediaKey, session.user.id);
     if (!media || !media.contentType.startsWith("image/")) return jsonError("Invalid story image", 400);
+    if (media.size > 25 * 1024 * 1024) return jsonError("Story image is too large", 400);
 
     const verifiedLocation = {
       ...location,
@@ -118,7 +119,7 @@ export async function POST(req) {
     }, 201);
   } catch (error) {
     console.error("Story creation error:", error);
-    return jsonError(error.message || "Failed to create story", 500);
+    return jsonError("Failed to create story", 500);
   }
 }
 
@@ -127,7 +128,8 @@ export async function GET(req) {
     const session = await getServerSession(authOptions);
     const url = new URL(req.url);
     const tab = normalizeString(url.searchParams.get("tab")) || "all";
-    const limit = Number(url.searchParams.get("limit") || 50);
+    const rawLimit = Number(url.searchParams.get("limit") || 50);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.floor(rawLimit), 1), 100) : 50;
     const cursor = normalizeString(url.searchParams.get("cursor")) || null;
     const result = await listStoryGlobeFeed({ viewerId: session?.user?.id || null, tab, limit, cursor });
     return jsonOk(result);
