@@ -251,6 +251,10 @@ export default function StoryEditor() {
   const [selectedLocation, setSelectedLocation] = useState(null);
 
   const layout = LAYOUTS[layoutId];
+  const visibleCells = useMemo(
+    () => layout.cells.map((cell, index) => ({ cell, image: images[index] || null })),
+    [layout, images],
+  );
   const selectedImage =
     images.find((item) => item.id === selectedImageId) || images[0] || null;
   const selectedText = texts.find((item) => item.id === selectedTextId) || null;
@@ -362,16 +366,21 @@ export default function StoryEditor() {
     const drag = activeImageDragRef.current;
     if (!drag) return;
     event.preventDefault();
-    const rect = event.currentTarget.getBoundingClientRect();
-    const deltaX = ((event.clientX - drag.clientX) / Math.max(rect.width, 1)) * 100;
-    const deltaY = ((event.clientY - drag.clientY) / Math.max(rect.height, 1)) * 100;
+    const rect = editorRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const deltaX =
+      ((event.clientX - drag.clientX) / Math.max(rect.width, 1)) * 100;
+    const deltaY =
+      ((event.clientY - drag.clientY) / Math.max(rect.height, 1)) * 100;
+
     setImages((current) =>
       current.map((item) =>
         item.id === drag.id
           ? {
               ...item,
-              x: Math.min(100, Math.max(0, drag.x - deltaX)),
-              y: Math.min(100, Math.max(0, drag.y - deltaY)),
+              x: Math.min(100, Math.max(0, drag.x + deltaX)),
+              y: Math.min(100, Math.max(0, drag.y + deltaY)),
             }
           : item,
       ),
@@ -504,68 +513,137 @@ export default function StoryEditor() {
   }, []);
 
   const shareStory = async (location = selectedLocation) => {
-    if (!images.length || isPosting) return else if (!location) { setShowLocationPicker(true); return; };
-    
-    try {
-      
-      setIsPosting(true);
-      setPostStage("Creating your story…");
-      setIsExporting(true);
-      await new Promise((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+  if (!images.length || isPosting) {
+    return;
+  }
+
+  // Location is mandatory.
+  // Open the picker and STOP the posting flow.
+  if (!location) {
+    setShowLocationPicker(true);
+    return;
+  }
+
+  try {
+    setIsPosting(true);
+    setPostStage("Creating your story…");
+
+    setIsExporting(true);
+
+    await new Promise((resolve) =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(resolve)
+      )
+    );
+
+    const blob = await toBlob(editorRef.current, {
+      cacheBust: true,
+      pixelRatio: 2,
+      width: STORY_WIDTH,
+      height: STORY_HEIGHT,
+    });
+
+    setIsExporting(false);
+
+    if (!blob) {
+      throw new Error(
+        "Could not prepare your story."
       );
-      const blob = await toBlob(editorRef.current, {
-        cacheBust: true,
-        pixelRatio: 2,
-        width: STORY_WIDTH,
-        height: STORY_HEIGHT,
-      });
-      setIsExporting(false);
-      if (!blob) throw new Error("Could not prepare your story.");
-      setShowProgress(true);
-      setPostStage("Uploading to your story…");
-      const file = new File([blob], `story-${Date.now()}.png`, {
+    }
+
+    setShowProgress(true);
+    setPostStage("Uploading to your story…");
+
+    const file = new File(
+      [blob],
+      `story-${Date.now()}.png`,
+      {
         type: "image/png",
-      });
-      const uploaded = await uploadMediaDirect(file, {
+      }
+    );
+
+    const uploaded = await uploadMediaDirect(
+      file,
+      {
         onProgress: (value) =>
           setProgress(
-            Math.min(90, Math.round((value <= 1 ? value * 100 : value) * 0.9)),
+            Math.min(
+              90,
+              Math.round(
+                (value <= 1
+                  ? value * 100
+                  : value) * 0.9
+              )
+            )
           ),
-      });
-      const response = await fetch("/api/story-upload", {
+      }
+    );
+
+    const response = await fetch(
+      "/api/story-upload",
+      {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           mediaKey: uploaded.key,
           mediaType: "image",
           duration,
           caption,
-          mentionedUserIds: mentionedUsers.map((user) => user._id),
+          mentionedUserIds:
+            mentionedUsers.map(
+              (user) => user._id
+            ),
           missionId: missionId || null,
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          location,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok)
-        throw new Error(data.message || "Unable to share this story.");
-      setProgress(100);
-      setPostStage("Shared");
-      router.push("/stories-globe");
-    } catch (error) {
-      setShowProgress(false);
-      window.alert(error.message || "Story upload failed.");
-    } finally {
-      setIsExporting(false);
-      setIsPosting(false);
-    }
-  };
+          timeZone:
+            Intl.DateTimeFormat().resolvedOptions()
+              .timeZone,
 
-  const visibleCells = useMemo(
-    () => layout.cells.map((cell, index) => ({ cell, image: images[index] })),
-    [images, layout],
-  );
+          // Guaranteed to be present here.
+          location: {
+            lat: Number(location.lat),
+            lng: Number(location.lng),
+          },
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.message ||
+          "Unable to share this story."
+      );
+    }
+
+    setSelectedLocation({
+      lat: Number(location.lat),
+      lng: Number(location.lng),
+    });
+
+    setProgress(100);
+    setPostStage("Shared");
+
+    router.push("/stories-globe");
+  } catch (error) {
+    console.error(
+      "Story upload error:",
+      error
+    );
+
+    setShowProgress(false);
+
+    window.alert(
+      error?.message ||
+        "Story upload failed."
+    );
+  } finally {
+    setIsExporting(false);
+    setIsPosting(false);
+  }
+};
 
   return (
     <main className="min-h-screen w-full bg-[#070203] text-white">
@@ -588,14 +666,14 @@ export default function StoryEditor() {
               Create your story
             </h1>
           </div>
-          <div
-            
-            onClick={shareStory}
+          <button
+            type="button"
+            onClick={() => void shareStory()}
             disabled={!images.length || isPosting}
-            className="rounded-full border border-red-400/30 bg-linear-to-r from-red-950 via-red-700 to-red-500 px-5 py-2.5 text-sm font-black shadow-lg shadow-red-950/50 disabled:opacity-40"
+            className="rounded-full border border-red-400/30 bg-linear-to-r from-red-950 via-red-700 to-red-500 px-5 py-2.5 text-sm font-black shadow-lg shadow-red-950/50 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isPosting ? postStage : "Share"}
-          </div>
+          </button>
         </header>
 
         <div className="grid items-start gap-5 xl:grid-cols-[280px_minmax(360px,1fr)_350px]">
@@ -607,15 +685,15 @@ export default function StoryEditor() {
                   {images.length} of {MAX_IMAGES} photos
                 </p>
               </div>
-              <div
-                
+              <button
+                type="button"
                 onClick={() => fileRef.current?.click()}
                 disabled={images.length >= MAX_IMAGES}
-                className="grid h-10 w-10 place-items-center rounded-full bg-white text-black disabled:opacity-30"
+                className="grid h-10 w-10 place-items-center rounded-full bg-white text-black disabled:cursor-not-allowed disabled:opacity-30"
                 aria-label="Add photos"
               >
                 <IoAdd className="text-xl" />
-              </div>
+              </button>
             </div>
             <input
               ref={fileRef}
@@ -666,23 +744,24 @@ export default function StoryEditor() {
                       </span>
                     </div>
                     <span className="flex gap-1 opacity-60 transition group-hover:opacity-100">
-                      <div
-                        
+                      <button
+                        type="button"
                         onClick={() => moveImage(index, -1)}
                         disabled={index === 0}
-                        className="grid h-7 w-7 place-items-center rounded-full bg-white/10 disabled:opacity-25"
+                        className="grid h-7 w-7 place-items-center rounded-full bg-white/10 disabled:cursor-not-allowed disabled:opacity-25"
                         aria-label={`Move photo ${index + 1} earlier`}
                       >
                         <IoArrowUp />
-                      </div>
-                      <div
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => moveImage(index, 1)}
                         disabled={index === images.length - 1}
-                        className="grid h-7 w-7 place-items-center rounded-full bg-white/10 disabled:opacity-25"
+                        className="grid h-7 w-7 place-items-center rounded-full bg-white/10 disabled:cursor-not-allowed disabled:opacity-25"
                         aria-label={`Move photo ${index + 1} later`}
                       >
                         <IoArrowDown />
-                      </div>
+                      </button>
                       <div
                         
                         onClick={() => removeImage(item.id)}
