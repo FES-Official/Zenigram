@@ -77,14 +77,6 @@ export function getS3KeyFromUrl(value, allowRawKey = false) {
   return "";
 }
 
-function isRasterImageKey(key) {
-  return /\.(?:jpe?g|png|webp)$/i.test(String(key || ""));
-}
-
-function getNextImageUrl(signedUrl) {
-  return `/_next/image?url=${encodeURIComponent(signedUrl)}&w=1080&q=85`;
-}
-
 export async function getReadableMediaUrl(value, key = "") {
   const config = getS3Config();
   if (!config) return normalizeString(value);
@@ -92,27 +84,18 @@ export async function getReadableMediaUrl(value, key = "") {
   if (!objectKey) return normalizeString(value);
 
   const cached = signedUrlCache.get(objectKey);
-  const signedUrl = cached && cached.expiresAt > Date.now()
-    ? cached.url
-    : await getSignedUrl(
-        getS3Client(),
-        new GetObjectCommand({ Bucket: config.bucket, Key: objectKey }),
-        { expiresIn: 3600 },
-      );
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
 
-  if (!cached || cached.expiresAt <= Date.now()) {
-    signedUrlCache.set(objectKey, {
-      url: signedUrl,
-      expiresAt: Date.now() + 50 * 60 * 1000,
-    });
-  }
-
-  // Raster images are served through Next's same-origin image optimizer.
-  // This avoids mobile-browser/S3 signed-URL rendering edge cases while
-  // keeping the underlying S3 object private.
-  return isRasterImageKey(objectKey)
-    ? getNextImageUrl(signedUrl)
-    : signedUrl;
+  const url = await getSignedUrl(
+    getS3Client(),
+    new GetObjectCommand({ Bucket: config.bucket, Key: objectKey }),
+    { expiresIn: 3600 },
+  );
+  signedUrlCache.set(objectKey, {
+    url,
+    expiresAt: Date.now() + 50 * 60 * 1000,
+  });
+  return url;
 }
 
 export async function hydrateUserMedia(user) {
