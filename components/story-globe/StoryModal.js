@@ -26,7 +26,7 @@ import {
   IoSparkles,
 } from "react-icons/io5";
 
-function getDurationMs(story) {
+const durationMs = (story) => {
   const seconds = Number(story?.duration);
 
   return (
@@ -36,7 +36,7 @@ function getDurationMs(story) {
   );
 }
 
-function formatStoryTime(value) {
+const storyTime = (value) => {
   if (!value) return "Just now";
 
   const date = new Date(value);
@@ -122,8 +122,8 @@ export default function StoryModal({
   const [detailTab, setDetailTab] = useState("comments");
 
   const [comments, setComments] = useState([]);
-  const [commentText, setCommentText] = useState("");
-  const [replyToComment, setReplyToComment] = useState(null);
+  const [comment, setComment] = useState("");
+  const [reply, setReply] = useState(null);
   const [commentBusy, setCommentBusy] = useState(false);
 
   const [commentMentionQuery, setCommentMentionQuery] = useState("");
@@ -131,7 +131,8 @@ export default function StoryModal({
 
   const [shareQuery, setShareQuery] = useState("");
   const [shareUsers, setShareUsers] = useState([]);
-  const [shareBusyId, setShareBusyId] = useState("");
+  const [shareBusy, setShareBusy] = useState("");
+  const [message, setMessage] = useState("");
   const [shareError, setShareError] = useState("");
 
   const [socialMessage, setSocialMessage] = useState("");
@@ -174,9 +175,11 @@ export default function StoryModal({
     setFlipped(false);
     setDetailTab("comments");
     setComments([]);
-    setCommentText("");
-    setReplyToComment(null);
-    setSocialMessage("");
+    setComment("");
+    setReply(null);
+    setShareQuery("");
+    setShareUsers([]);
+    setMessage("");
     setShareError("");
     setShareQuery("");
     setShareUsers([]);
@@ -438,7 +441,7 @@ export default function StoryModal({
     };
   }, []);
 
-  const toggleLike = useCallback(async () => {
+  const likeStory = useCallback(async () => {
     if (!story?._id) return;
 
     setLikeBurst(true);
