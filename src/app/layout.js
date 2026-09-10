@@ -60,7 +60,9 @@ export default function RootLayout({ children }) {
         <a className="skip-link" href="#main-content">
           Skip to content
         </a>
-        <Providers>{children}</Providers>
+        <Providers>
+          <div id="main-content">{children}</div>
+        </Providers>
       </body>
     </html>
   );
