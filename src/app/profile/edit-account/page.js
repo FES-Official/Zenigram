@@ -623,7 +623,7 @@ export default function EditAccountPage() {
           description={
             accountDialog === "deactivate"
               ? "Your profile and content will be hidden until you sign in again."
-              : "This cannot be undone. Your posts, messages, profile data, and owned media will be removed."
+              : "This cannot be undone. Your posts, messages, profile data, and owned media will be deleted parmanently."
           }
           confirmLabel={
             accountDialog === "deactivate"
