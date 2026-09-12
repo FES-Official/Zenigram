@@ -27,6 +27,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024;
 const MIN_PART_SIZE = 5 * 1024 * 1024;
 const DEFAULT_PART_SIZE = 10 * 1024 * 1024;
 const MAX_PARTS = 10000;
+const MAX_SIGNED_PARTS_PER_REQUEST = 10000;
 
 function mediaFolder(contentType) {
   if (contentType.startsWith("image/")) return "images";
@@ -44,20 +45,20 @@ function validateNewUpload(body) {
 }
 
 function validateMultipartParts(parts) {
-  if (!Array.isArray(parts) || parts.length < 1 || parts.length > MAX_PARTS) {
-    throw new Error("Invalid uploaded parts");
-  }
-  const normalized = parts.map((part) => ({
-    ETag: normalizeString(part?.ETag),
-    PartNumber: Number(part?.PartNumber),
-  }));
+  if (!Array.isArray(parts) || parts.length < 1 || parts.length > MAX_PARTS) throw new Error("Invalid uploaded parts");
+  const normalized = parts.map((part) => ({ ETag: normalizeString(part?.ETag), PartNumber: Number(part?.PartNumber) }));
   for (let index = 0; index < normalized.length; index += 1) {
     const part = normalized[index];
-    if (!part.ETag || !Number.isInteger(part.PartNumber) || part.PartNumber !== index + 1) {
-      throw new Error("Multipart parts must be contiguous and ordered");
-    }
+    if (!part.ETag || !Number.isInteger(part.PartNumber) || part.PartNumber !== index + 1) throw new Error("Multipart parts must be contiguous and ordered");
   }
   return normalized;
+}
+
+function validatePartNumbers(values) {
+  if (!Array.isArray(values) || !values.length || values.length > MAX_SIGNED_PARTS_PER_REQUEST) throw new Error("Invalid multipart part numbers");
+  const numbers = [...new Set(values.map(Number))];
+  if (numbers.length !== values.length || numbers.some((number) => !Number.isInteger(number) || number < 1 || number > MAX_PARTS)) throw new Error("Invalid multipart part numbers");
+  return numbers.sort((a, b) => a - b);
 }
 
 export async function POST(req) {
@@ -97,21 +98,29 @@ export async function POST(req) {
     const uploadId = normalizeString(body.uploadId);
     if (!key || !uploadId || !isOwnedMediaKey(key, session.user.id)) return jsonError("Invalid multipart upload", 400);
 
+    if (action === "signParts") {
+      let partNumbers;
+      try { partNumbers = validatePartNumbers(body.partNumbers); } catch (error) { return jsonError(error.message, 400); }
+      const parts = await Promise.all(partNumbers.map(async (partNumber) => ({
+        partNumber,
+        uploadUrl: await getSignedUrl(s3, new UploadPartCommand({
+          Bucket: config.bucket, Key: key, UploadId: uploadId, PartNumber: partNumber,
+        }), { expiresIn: 900 }),
+      })));
+      return jsonOk({ parts });
+    }
+
     if (action === "signPart") {
       const partNumber = Number(body.partNumber);
       if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > MAX_PARTS) return jsonError("Invalid part number", 400);
-      const uploadUrl = await getSignedUrl(s3, new UploadPartCommand({
-        Bucket: config.bucket, Key: key, UploadId: uploadId, PartNumber: partNumber,
-      }), { expiresIn: 900 });
+      const uploadUrl = await getSignedUrl(s3, new UploadPartCommand({ Bucket: config.bucket, Key: key, UploadId: uploadId, PartNumber: partNumber }), { expiresIn: 900 });
       return jsonOk({ uploadUrl, partNumber });
     }
 
     if (action === "completeMultipart") {
       let parts;
       try { parts = validateMultipartParts(body.parts); } catch (error) { return jsonError(error.message, 400); }
-      await s3.send(new CompleteMultipartUploadCommand({
-        Bucket: config.bucket, Key: key, UploadId: uploadId, MultipartUpload: { Parts: parts },
-      }));
+      await s3.send(new CompleteMultipartUploadCommand({ Bucket: config.bucket, Key: key, UploadId: uploadId, MultipartUpload: { Parts: parts } }));
       return jsonOk({ key, objectUrl: getPublicS3Url(key) });
     }
 
@@ -123,6 +132,6 @@ export async function POST(req) {
     return jsonError("Invalid upload action", 400);
   } catch (error) {
     console.error("Direct S3 upload error:", error);
-    return jsonError("Unable to prepare upload", 500);
+    return jsonError(error.message || "Unable to prepare upload", 500);
   }
 }
