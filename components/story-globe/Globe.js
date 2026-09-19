@@ -259,6 +259,12 @@ export default function StoryGlobe() {
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState("");
+  
+  const mapContainerRef = useRef(null);
+const mapRef = useRef(null);
+const triggerRef = useRef(null);
+
+const [mapInstance, setMapInstance] = useState(null);
 
   const loadStories = useCallback(
     async (reset = false, cursor = "") => {
