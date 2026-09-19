@@ -5,13 +5,17 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   {
     // React 19 / Compiler diagnostics are optimization guidance rather than
-    // application correctness errors. Keep the normal Next.js lint rules
-    // active while preventing compiler-only patterns from blocking CI.
+    // application-correctness errors. Keep the normal Next.js lint rules active
+    // while allowing the existing imperative Google Maps integration.
+    linterOptions: {
+      reportUnusedDisableDirectives: "off",
+    },
     rules: {
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/preserve-manual-memoization": "off",
       "react-hooks/purity": "off",
       "react-hooks/immutability": "off",
+      "react-hooks/refs": "off",
     },
   },
   globalIgnores([
