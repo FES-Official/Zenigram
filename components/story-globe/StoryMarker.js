@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
 function createMarkerContent(story, storyCount, onClick) {
   const button = document.createElement("button");
@@ -86,14 +86,12 @@ function createMarkerContent(story, storyCount, onClick) {
     frame.style.scale = "1";
   });
 
-  button.addEventListener("click", () => onClick());
+  button.addEventListener("click", onClick);
 
   return button;
 }
 
 export default function StoryMarker({ map, group, onClick }) {
-  const markerRef = useRef(null);
-
   useEffect(() => {
     if (!map || !window.google?.maps?.marker?.AdvancedMarkerElement) {
       return undefined;
@@ -116,17 +114,14 @@ export default function StoryMarker({ map, group, onClick }) {
           lng: Number(group.longitude),
         },
         content,
-        title: `${group.stories.length} Zenigram story${group.stories.length === 1 ? "" : "ies"}`,
+        title: `${group.stories.length} Zenigram ${group.stories.length === 1 ? "story" : "stories"}`,
         gmpClickable: true,
         collisionBehavior:
           window.google.maps.CollisionBehavior?.OPTIONAL_AND_HIDES_LOWER_PRIORITY,
       });
 
-    markerRef.current = marker;
-
     return () => {
       marker.map = null;
-      markerRef.current = null;
     };
   }, [map, group, onClick]);
 
