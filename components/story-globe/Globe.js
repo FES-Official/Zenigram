@@ -10,27 +10,75 @@ import {
   IoPlay,
   IoSearch,
 } from "react-icons/io5";
-import MapboxMap, {
-  FullscreenControl,
-  NavigationControl,
-} from "react-map-gl/mapbox";
 
 import PowerDashboard from "./PowerDashboard";
 import StoryMarker from "./StoryMarker";
 import StoryModal from "./StoryModal";
 
-import "mapbox-gl/dist/mapbox-gl.css";
-
-const DEFAULT_VIEW_STATE = {
-  longitude: 15,
-  latitude: 18,
-  zoom: 0,
-  pitch: 18,
-  bearing: -8,
-};
-
-const SATELLITE_MAP_STYLE = "mapbox://styles/mapbox/satellite-streets-v12";
+const DEFAULT_CENTER = { lat: 18, lng: 15 };
+const DEFAULT_ZOOM = 1;
 const STORY_GROUP_RADIUS_METERS = 700;
+const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const GOOGLE_MAP_ID =
+  process.env.NEXT_PUBLIC_GOOGLE_MAP_ID || "DEMO_MAP_ID";
+
+let googleMapsLoaderPromise = null;
+
+function loadGoogleMaps(apiKey) {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("Google Maps can only load in a browser."));
+  }
+
+  if (window.google?.maps?.Map) {
+    return Promise.resolve(window.google);
+  }
+
+  if (googleMapsLoaderPromise) {
+    return googleMapsLoaderPromise;
+  }
+
+  googleMapsLoaderPromise = new Promise((resolve, reject) => {
+    const existingScript = document.getElementById(
+      "zenigram-google-maps-script"
+    );
+
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(window.google), {
+        once: true,
+      });
+      existingScript.addEventListener(
+        "error",
+        () => reject(new Error("Google Maps failed to load.")),
+        { once: true }
+      );
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "zenigram-google-maps-script";
+    script.src =
+      "https://maps.googleapis.com/maps/api/js?key=" +
+      encodeURIComponent(apiKey) +
+      "&v=weekly&libraries=marker";
+    script.async = true;
+    script.defer = true;
+
+    script.onload = () => {
+      if (window.google?.maps?.Map) {
+        resolve(window.google);
+      } else {
+        reject(new Error("Google Maps loaded without the Maps API."));
+      }
+    };
+
+    script.onerror = () =>
+      reject(new Error("Unable to load Google Maps."));
+
+    document.head.appendChild(script);
+  });
+
+  return googleMapsLoaderPromise;
+}
 
 function valid(story) {
   const lng = Number(story?.longitude);
@@ -52,12 +100,8 @@ function distance(a, b) {
 
   const lat1 = toRadians(Number(a.latitude));
   const lat2 = toRadians(Number(b.latitude));
-  const dLat = toRadians(
-    Number(b.latitude) - Number(a.latitude)
-  );
-  const dLng = toRadians(
-    Number(b.longitude) - Number(a.longitude)
-  );
+  const dLat = toRadians(Number(b.latitude) - Number(a.latitude));
+  const dLng = toRadians(Number(b.longitude) - Number(a.longitude));
 
   const h =
     Math.sin(dLat / 2) ** 2 +
@@ -65,11 +109,7 @@ function distance(a, b) {
       Math.cos(lat2) *
       Math.sin(dLng / 2) ** 2;
 
-  return (
-    2 *
-    R *
-    Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
-  );
+  return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
 function groupStories(stories) {
@@ -77,8 +117,7 @@ function groupStories(stories) {
 
   for (const story of stories.filter(valid)) {
     const existingGroup = groups.find(
-      (group) =>
-        distance(group, story) <= STORY_GROUP_RADIUS_METERS
+      (group) => distance(group, story) <= STORY_GROUP_RADIUS_METERS
     );
 
     if (!existingGroup) {
@@ -131,13 +170,10 @@ function DashboardDialog({
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-
     closeRef.current?.focus();
 
     const handleKeyDown = (event) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
+      if (event.key === "Escape") onClose();
     };
 
     document.addEventListener("keydown", handleKeyDown);
@@ -149,17 +185,13 @@ function DashboardDialog({
     };
   }, [open, onClose, triggerRef]);
 
-  if (!open) {
-    return null;
-  }
+  if (!open) return null;
 
   return (
     <div
       className="fixed inset-0 z-[100] grid place-items-center bg-black/75 p-3 backdrop-blur-sm"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
+        if (event.target === event.currentTarget) onClose();
       }}
     >
       <section
@@ -173,7 +205,6 @@ function DashboardDialog({
             <p className="text-[10px] uppercase tracking-[0.28em] text-cyan-200/55">
               World progression
             </p>
-
             <h2
               id="power-dashboard-title"
               className="mt-1 flex items-center gap-2 text-lg font-semibold uppercase text-cyan-100"
@@ -195,11 +226,7 @@ function DashboardDialog({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
-          <PowerDashboard
-            data={data}
-            loading={loading}
-            error={error}
-          />
+          <PowerDashboard data={data} loading={loading} error={error} />
         </div>
       </section>
     </div>
@@ -207,22 +234,21 @@ function DashboardDialog({
 }
 
 export default function StoryGlobe() {
+  const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const triggerRef = useRef(null);
 
   const router = useRouter();
 
-  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  const [mapsReady, setMapsReady] = useState(false);
+  const [mapError, setMapError] = useState("");
 
   const [tab, setTab] = useState("all");
   const [stories, setStories] = useState([]);
-
   const [nextCursor, setNextCursor] = useState(null);
-
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-
   const [selectedGroupId, setSelectedGroupId] = useState(null);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -236,18 +262,13 @@ export default function StoryGlobe() {
 
   const loadStories = useCallback(
     async (reset = false, cursor = "") => {
-      if (!reset && !cursor) {
-        return;
-      }
+      if (!reset && !cursor) return;
 
       const controller = new AbortController();
 
       try {
-        if (reset) {
-          setLoading(true);
-        } else {
-          setLoadingMore(true);
-        }
+        if (reset) setLoading(true);
+        else setLoadingMore(true);
 
         setError("");
 
@@ -256,9 +277,7 @@ export default function StoryGlobe() {
           limit: "80",
         });
 
-        if (cursor) {
-          params.set("cursor", cursor);
-        }
+        if (cursor) params.set("cursor", cursor);
 
         const response = await fetch(
           `/api/story-globe?${params.toString()}`,
@@ -271,9 +290,7 @@ export default function StoryGlobe() {
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          throw new Error(
-            data?.error || "Unable to load stories."
-          );
+          throw new Error(data?.error || "Unable to load stories.");
         }
 
         const incomingStories = Array.isArray(data?.stories)
@@ -281,17 +298,13 @@ export default function StoryGlobe() {
           : [];
 
         setStories((current) =>
-          reset
-            ? incomingStories
-            : [...current, ...incomingStories]
+          reset ? incomingStories : [...current, ...incomingStories]
         );
-
         setNextCursor(data?.nextCursor || null);
       } catch (loadError) {
         if (loadError?.name !== "AbortError") {
           setError(
-            loadError?.message ||
-              "Stories could not be loaded right now."
+            loadError?.message || "Stories could not be loaded right now."
           );
         }
       } finally {
@@ -315,7 +328,6 @@ export default function StoryGlobe() {
       setStories([]);
       setNextCursor(null);
       setSelectedGroupId(null);
-
       await loadStories(true);
     };
 
@@ -327,9 +339,7 @@ export default function StoryGlobe() {
   }, [tab, loadStories]);
 
   useEffect(() => {
-    if (!dashboardOpen || dashboardData) {
-      return undefined;
-    }
+    if (!dashboardOpen || dashboardData) return undefined;
 
     const controller = new AbortController();
 
@@ -355,14 +365,11 @@ export default function StoryGlobe() {
       } catch (dashboardLoadError) {
         if (dashboardLoadError?.name !== "AbortError") {
           setDashboardError(
-            dashboardLoadError?.message ||
-              "Unable to load Power Dashboard."
+            dashboardLoadError?.message || "Unable to load Power Dashboard."
           );
         }
       } finally {
-        if (!controller.signal.aborted) {
-          setDashboardLoading(false);
-        }
+        if (!controller.signal.aborted) setDashboardLoading(false);
       }
     };
 
@@ -371,19 +378,87 @@ export default function StoryGlobe() {
     return () => controller.abort();
   }, [dashboardOpen, dashboardData]);
 
-  const groups = useMemo(
-    () => groupStories(stories),
-    [stories]
-  );
+  useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY) {
+      setMapError("Google Maps API key is missing.");
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    loadGoogleMaps(GOOGLE_MAPS_API_KEY)
+      .then((google) => {
+        if (cancelled || !mapContainerRef.current || mapRef.current) {
+          return;
+        }
+
+        const map = new google.maps.Map(mapContainerRef.current, {
+          center: DEFAULT_CENTER,
+          zoom: DEFAULT_ZOOM,
+          minZoom: 1,
+          maxZoom: 18,
+          mapTypeId: "satellite",
+          mapId: GOOGLE_MAP_ID,
+          gestureHandling: "greedy",
+          disableDefaultUI: false,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: true,
+          zoomControl: true,
+          rotateControl: true,
+          cameraControl: false,
+          clickableIcons: false,
+          keyboardShortcuts: true,
+          isFractionalZoomEnabled: true,
+          backgroundColor: "#03070d",
+          tilt: 0,
+          heading: 0,
+        });
+
+        mapRef.current = map;
+        setMapsReady(true);
+      })
+      .catch((loadError) => {
+        if (!cancelled) {
+          setMapError(
+            loadError?.message || "Unable to load Google Maps."
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+
+      if (mapRef.current) {
+        mapRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapRef.current || !mapsReady) return undefined;
+
+    const resize = () => {
+      window.google?.maps?.event?.trigger(mapRef.current, "resize");
+    };
+
+    const timer = window.setTimeout(resize, 80);
+    window.addEventListener("resize", resize);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", resize);
+    };
+  }, [mapsReady]);
+
+  const groups = useMemo(() => groupStories(stories), [stories]);
 
   const selectedGroup = useMemo(() => {
     const existingGroup = groups.find(
       (group) => group.id === selectedGroupId
     );
 
-    if (existingGroup) {
-      return existingGroup;
-    }
+    if (existingGroup) return existingGroup;
 
     if (selectedGroupId === "all-stories") {
       return {
@@ -407,8 +482,8 @@ export default function StoryGlobe() {
       return;
     }
 
-    if (!token) {
-      setSearchError("Mapbox token is missing.");
+    if (!mapRef.current || !window.google?.maps?.Geocoder) {
+      setSearchError("Google Maps is still loading.");
       return;
     }
 
@@ -416,284 +491,236 @@ export default function StoryGlobe() {
       setSearching(true);
       setSearchError("");
 
-      const params = new URLSearchParams({
-        q: query,
-        access_token: token,
-        limit: "1",
+      const geocoder = new window.google.maps.Geocoder();
+
+      const response = await geocoder.geocode({
+        address: query,
       });
 
-      const response = await fetch(
-        `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`
-      );
+      const result = response?.results?.[0];
+      const location = result?.geometry?.location;
 
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(
-          data?.message ||
-            data?.error ||
-            "Location search failed."
-        );
+      if (!location) {
+        throw new Error("No matching location was found.");
       }
 
-      const place = data?.features?.[0];
-      const coordinates = place?.geometry?.coordinates;
+      const target = {
+        lat: location.lat(),
+        lng: location.lng(),
+      };
 
-      if (
-        !Array.isArray(coordinates) ||
-        coordinates.length < 2
-      ) {
-        throw new Error(
-          "No matching location was found."
-        );
-      }
+      mapRef.current.panTo(target);
 
-      mapRef.current?.getMap()?.flyTo({
-        center: coordinates,
-        zoom: 5,
-        pitch: 20,
-        duration: 900,
-        essential: true,
-      });
+      window.setTimeout(() => {
+        mapRef.current?.setZoom(6);
+      }, 300);
     } catch (searchLoadError) {
       setSearchError(
-        searchLoadError?.message ||
-          "Location search failed."
+        searchLoadError?.message || "Location search failed."
       );
     } finally {
       setSearching(false);
     }
-  }, [searchQuery, token]);
+  }, [searchQuery]);
 
-  const updateStory = useCallback(
-    (storyId, updates) => {
-      setStories((current) =>
-        current.map((story) =>
-          story?._id === storyId
-            ? { ...story, ...updates }
-            : story
-        )
-      );
-    },
-    []
-  );
+  const updateStory = useCallback((storyId, updates) => {
+    setStories((current) =>
+      current.map((story) =>
+        story?._id === storyId ? { ...story, ...updates } : story
+      )
+    );
+  }, []);
 
-  if (!token) {
+  const resetWorld = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.panTo(DEFAULT_CENTER);
+    window.setTimeout(() => {
+      mapRef.current?.setZoom(DEFAULT_ZOOM + 0.65);
+      mapRef.current?.setTilt(0);
+      mapRef.current?.setHeading(-8);
+    }, 300);
+  }, []);
+
+  if (!GOOGLE_MAPS_API_KEY || mapError) {
     return (
-      <main className="grid h-screen w-screen place-items-center bg-black text-white">
-        Mapbox token is missing.
+      <main className="grid h-screen w-screen place-items-center bg-black p-6 text-center text-white">
+        <div className="max-w-lg">
+          <IoEarth className="mx-auto text-4xl text-cyan-300" />
+          <h1 className="mt-4 text-xl font-semibold">
+            Stories Globe could not load
+          </h1>
+          <p className="mt-2 text-sm text-white/55">
+            {mapError ||
+              "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is missing."}
+          </p>
+          <p className="mt-3 text-xs text-white/35">
+            Enable the Google Maps JavaScript API for the configured Google
+            Cloud project and provide a Maps JavaScript API key.
+          </p>
+        </div>
       </main>
     );
   }
 
   return (
     <main className="story-globe relative h-screen w-screen overflow-hidden bg-[#03070d] text-white">
-      <MapboxMap
-        ref={mapRef}
-        mapboxAccessToken={token}
-        mapStyle={SATELLITE_MAP_STYLE}
-        projection="globe"
-        initialViewState={DEFAULT_VIEW_STATE}
-        minZoom={1}
-        maxZoom={18}
-        maxPitch={60}
-        fadeDuration={0}
-        renderWorldCopies={false}
-        reuseMaps
-        antialias={false}
-        attributionControl={false}
-        onLoad={() => {
-          const map = mapRef.current?.getMap();
+      <div
+        ref={mapContainerRef}
+        className="absolute inset-0 h-full w-full"
+        aria-label="Zenigram Stories Globe"
+      />
 
-          map?.setFog({
-            color: "rgb(10, 24, 32)",
-            "high-color": "rgb(40, 110, 125)",
-            "horizon-blend": 0.08,
-            "space-color": "rgb(1, 4, 9)",
-            "star-intensity": 0.5,
-          });
-        }}
-      >
-        <div className="pointer-events-none absolute inset-0 z-1 bg-[radial-gradient(circle_at_center,transparent_45%,rgba(0,8,16,.08)_70%,rgba(0,4,10,.42)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 z-1 bg-[radial-gradient(circle_at_center,transparent_45%,rgba(0,8,16,.08)_70%,rgba(0,4,10,.42)_100%)]" />
 
-        <header className="pointer-events-none absolute left-1/2 top-4 z-20 w-[min(96vw,900px)] -translate-x-1/2 text-center md:top-7">
-          <p className="text-[11px] uppercase tracking-[0.34em] text-cyan-200/65">
-            Live for 24 hours
-          </p>
+      <header className="pointer-events-none absolute left-1/2 top-4 z-20 w-[min(96vw,900px)] -translate-x-1/2 text-center md:top-7">
+        <p className="text-[11px] uppercase tracking-[0.34em] text-cyan-200/65">
+          Live for 24 hours
+        </p>
 
-          <h1 className="mt-1 text-xl font-semibold uppercase text-cyan-100 drop-shadow-[0_0_18px_rgba(103,232,249,.55)] sm:text-2xl md:text-4xl">
-            The Global Storyscape
-          </h1>
+        <h1 className="mt-1 text-xl font-semibold uppercase text-cyan-100 drop-shadow-[0_0_18px_rgba(103,232,249,.55)] sm:text-2xl md:text-4xl">
+          The Global Storyscape
+        </h1>
 
-          <div className="pointer-events-auto mx-auto mt-4 flex w-fit overflow-x-auto border border-cyan-300/35 bg-black/50 text-[10px] font-semibold uppercase tracking-[0.1em] backdrop-blur">
-            {[
-              ["all", "All"],
-              ["trending", "Trending"],
-              ["close", "Close Ones"],
-              ["supporting", "Supporting"],
-            ].map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setTab(id)}
-                className={`whitespace-nowrap px-3 py-2.5 transition sm:px-4 ${
-                  tab === id
-                    ? "bg-cyan-300/20 text-cyan-100"
-                    : "text-white/55 hover:bg-white/10"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <div className="mx-auto mt-2 w-fit border border-white/10 bg-black/45 px-3 py-1.5 text-xs text-white/65">
-            {stories.length} loaded ·{" "}
-            {nextCursor ? "more available" : "end of feed"}
-          </div>
-        </header>
-
-        <aside className="absolute left-3 top-40 z-20 w-[min(72vw,210px)] border border-cyan-200/20 bg-[#06101a]/80 p-3 backdrop-blur-md md:left-7 md:top-1/2 md:-translate-y-1/2">
-          <button
-            type="button"
-            disabled={!stories.length}
-            onClick={() =>
-              setSelectedGroupId("all-stories")
-            }
-            className="flex w-full items-center justify-center gap-2 border border-cyan-300/50 bg-cyan-300/10 px-3 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100 disabled:opacity-40"
-          >
-            <IoPlay />
-            Watch loaded stories
-          </button>
-
-          <label
-            htmlFor="story-location-search"
-            className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/60"
-          >
-            Search location
-          </label>
-
-          <div className="mt-2 flex border border-cyan-200/45 bg-black/25">
-            <input
-              id="story-location-search"
-              value={searchQuery}
-              onChange={(event) =>
-                setSearchQuery(event.target.value)
-              }
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  void searchPlace();
-                }
-              }}
-              placeholder="City..."
-              className="min-w-0 flex-1 bg-transparent px-2 py-2 text-xs text-white outline-none placeholder:text-white/30"
-            />
-
+        <div className="pointer-events-auto mx-auto mt-4 flex w-fit overflow-x-auto border border-cyan-300/35 bg-black/50 text-[10px] font-semibold uppercase tracking-[0.1em] backdrop-blur">
+          {[
+            ["all", "All"],
+            ["trending", "Trending"],
+            ["close", "Close Ones"],
+            ["supporting", "Supporting"],
+          ].map(([id, label]) => (
             <button
+              key={id}
               type="button"
-              onClick={() => void searchPlace()}
-              disabled={searching}
-              aria-label="Search location"
-              className="grid w-9 place-items-center text-cyan-200 disabled:opacity-40"
+              onClick={() => setTab(id)}
+              className={`whitespace-nowrap px-3 py-2.5 transition sm:px-4 ${
+                tab === id
+                  ? "bg-cyan-300/20 text-cyan-100"
+                  : "text-white/55 hover:bg-white/10"
+              }`}
             >
-              <IoSearch />
+              {label}
             </button>
-          </div>
+          ))}
+        </div>
 
-          {searchError && (
-            <p className="mt-2 text-[11px] text-red-300">
-              {searchError}
-            </p>
-          )}
+        <div className="mx-auto mt-2 w-fit border border-white/10 bg-black/45 px-3 py-1.5 text-xs text-white/65">
+          {stories.length} loaded · {nextCursor ? "more available" : "end of feed"}
+        </div>
+      </header>
 
-          <p className="mt-3 text-[11px] text-white/40">
-            {groups.length} nearby groups
-          </p>
+      <aside className="absolute left-3 top-40 z-20 w-[min(72vw,210px)] border border-cyan-200/20 bg-[#06101a]/80 p-3 backdrop-blur-md md:left-7 md:top-1/2 md:-translate-y-1/2">
+        <button
+          type="button"
+          disabled={!stories.length}
+          onClick={() => setSelectedGroupId("all-stories")}
+          className="flex w-full items-center justify-center gap-2 border border-cyan-300/50 bg-cyan-300/10 px-3 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100 disabled:opacity-40"
+        >
+          <IoPlay />
+          Watch loaded stories
+        </button>
 
-          {nextCursor && (
-            <button
-              type="button"
-              onClick={() =>
-                void loadStories(false, nextCursor)
-              }
-              disabled={loadingMore}
-              className="mt-3 w-full border border-white/10 bg-white/5 py-2 text-[10px] uppercase tracking-[0.12em] text-white/70 disabled:opacity-40"
-            >
-              {loadingMore ? "Loading…" : "Load more"}
-            </button>
-          )}
-        </aside>
+        <label
+          htmlFor="story-location-search"
+          className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/60"
+        >
+          Search location
+        </label>
 
-        <div className="absolute bottom-5 left-4 z-20 flex gap-2 md:left-7">
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            aria-label="Back home"
-            className="grid h-10 w-10 place-items-center border border-white/15 bg-black/55 backdrop-blur"
-          >
-            <IoArrowBack />
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              mapRef.current?.getMap()?.flyTo({
-                center: [15, 18],
-                zoom: 1.65,
-                pitch: 18,
-                bearing: -8,
-                duration: 700,
-                essential: true,
-              })
-            }
-            aria-label="Reset world"
-            className="grid h-10 w-10 place-items-center border border-cyan-300/45 bg-cyan-300/10 text-cyan-200"
-          >
-            <IoEarth />
-          </button>
+        <div className="mt-2 flex border border-cyan-200/45 bg-black/25">
+          <input
+            id="story-location-search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void searchPlace();
+            }}
+            placeholder="City..."
+            className="min-w-0 flex-1 bg-transparent px-2 py-2 text-xs text-white outline-none placeholder:text-white/30"
+          />
 
           <button
-            ref={triggerRef}
             type="button"
-            onClick={() => setDashboardOpen(true)}
-            className="flex h-10 items-center gap-2 border border-amber-300/50 bg-amber-300/10 px-3 text-amber-200"
+            onClick={() => void searchPlace()}
+            disabled={searching || !mapsReady}
+            aria-label="Search location"
+            className="grid w-9 place-items-center text-cyan-200 disabled:opacity-40"
           >
-            <IoFlash />
-
-            <span className="hidden text-[10px] font-semibold uppercase sm:inline">
-              Power
-            </span>
+            <IoSearch />
           </button>
         </div>
 
-        <NavigationControl
-          showCompass
-          visualizePitch
-        />
-
-        <FullscreenControl />
-
-        {(loading ||
-          error ||
-          (!loading && stories.length === 0)) && (
-          <div className="absolute bottom-20 left-1/2 z-20 -translate-x-1/2 border border-white/10 bg-black/65 px-4 py-2 text-sm text-white/70 backdrop-blur">
-            {loading
-              ? "Locating active stories..."
-              : error || `No ${tab} stories right now.`}
-          </div>
+        {searchError && (
+          <p className="mt-2 text-[11px] text-red-300">{searchError}</p>
         )}
 
-        {!loading &&
-          groups.map((group) => (
-            <StoryMarker
-              key={group.id}
-              group={group}
-              onClick={(value) =>
-                setSelectedGroupId(value.id)
-              }
-            />
-          ))}
-      </MapboxMap>
+        <p className="mt-3 text-[11px] text-white/40">
+          {groups.length} nearby groups
+        </p>
+
+        {nextCursor && (
+          <button
+            type="button"
+            onClick={() => void loadStories(false, nextCursor)}
+            disabled={loadingMore}
+            className="mt-3 w-full border border-white/10 bg-white/5 py-2 text-[10px] uppercase tracking-[0.12em] text-white/70 disabled:opacity-40"
+          >
+            {loadingMore ? "Loading…" : "Load more"}
+          </button>
+        )}
+      </aside>
+
+      <div className="absolute bottom-5 left-4 z-20 flex gap-2 md:left-7">
+        <button
+          type="button"
+          onClick={() => router.push("/")}
+          aria-label="Back home"
+          className="grid h-10 w-10 place-items-center border border-white/15 bg-black/55 backdrop-blur"
+        >
+          <IoArrowBack />
+        </button>
+
+        <button
+          type="button"
+          onClick={resetWorld}
+          aria-label="Reset world"
+          className="grid h-10 w-10 place-items-center border border-cyan-300/45 bg-cyan-300/10 text-cyan-200"
+        >
+          <IoEarth />
+        </button>
+
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => setDashboardOpen(true)}
+          className="flex h-10 items-center gap-2 border border-amber-300/50 bg-amber-300/10 px-3 text-amber-200"
+        >
+          <IoFlash />
+          <span className="hidden text-[10px] font-semibold uppercase sm:inline">
+            Power
+          </span>
+        </button>
+      </div>
+
+      {(loading || error || (!loading && stories.length === 0)) && (
+        <div className="absolute bottom-20 left-1/2 z-20 -translate-x-1/2 border border-white/10 bg-black/65 px-4 py-2 text-sm text-white/70 backdrop-blur">
+          {loading
+            ? "Locating active stories..."
+            : error || `No ${tab} stories right now.`}
+        </div>
+      )}
+
+      {mapsReady &&
+        !loading &&
+        groups.map((group) => (
+          <StoryMarker
+            key={group.id}
+            map={mapRef.current}
+            group={group}
+            onClick={(value) => setSelectedGroupId(value.id)}
+          />
+        ))}
 
       <DashboardDialog
         open={dashboardOpen}
