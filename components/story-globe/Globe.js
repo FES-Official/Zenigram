@@ -260,9 +260,6 @@ export default function StoryGlobe() {
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState("");
   
-  
-const mapRef = useRef(null);
-const triggerRef = useRef(null);
 
 const [mapInstance, setMapInstance] = useState(null);
 
