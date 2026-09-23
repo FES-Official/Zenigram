@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-function createMarkerContent(story, storyCount, onClick) {
+function createMarkerContent(story, storyCount) {
   const button = document.createElement("button");
   button.type = "button";
   button.setAttribute(
@@ -86,42 +86,42 @@ function createMarkerContent(story, storyCount, onClick) {
     frame.style.scale = "1";
   });
 
-  button.addEventListener("click", onClick);
-
   return button;
 }
 
 export default function StoryMarker({ map, group, onClick }) {
   useEffect(() => {
-    if (!map || !window.google?.maps?.marker?.AdvancedMarkerElement) {
+    const Marker3DInteractiveElement =
+      window.google?.maps?.maps3d?.Marker3DInteractiveElement;
+
+    if (!map || !Marker3DInteractiveElement) {
       return undefined;
     }
 
     const story = group?.stories?.[0];
     if (!story) return undefined;
 
-    const content = createMarkerContent(
-      story,
-      group.stories.length,
-      () => onClick(group)
-    );
+    const marker = new Marker3DInteractiveElement({
+      position: {
+        lat: Number(group.latitude),
+        lng: Number(group.longitude),
+        altitude: 0,
+      },
+      altitudeMode: "CLAMP_TO_GROUND",
+      title: `${group.stories.length} Zenigram ${group.stories.length === 1 ? "story" : "stories"}`,
+      drawsWhenOccluded: true,
+    });
 
-    const marker =
-      new window.google.maps.marker.AdvancedMarkerElement({
-        map,
-        position: {
-          lat: Number(group.latitude),
-          lng: Number(group.longitude),
-        },
-        content,
-        title: `${group.stories.length} Zenigram ${group.stories.length === 1 ? "story" : "stories"}`,
-        gmpClickable: true,
-        collisionBehavior:
-          window.google.maps.CollisionBehavior?.OPTIONAL_AND_HIDES_LOWER_PRIORITY,
-      });
+    marker.append(createMarkerContent(story, group.stories.length));
+
+    const handleClick = () => onClick(group);
+    marker.addEventListener("gmp-click", handleClick);
+
+    map.append(marker);
 
     return () => {
-      marker.map = null;
+      marker.removeEventListener("gmp-click", handleClick);
+      marker.remove();
     };
   }, [map, group, onClick]);
 
