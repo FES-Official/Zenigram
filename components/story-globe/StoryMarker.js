@@ -3,16 +3,21 @@
 import { useEffect } from "react";
 
 function createPin(story, storyCount, PinElement) {
+  const profileImage =
+    story?.userId?.profilePic ||
+    story?.profilePic ||
+    "/user.svg";
+
   const pin = new PinElement({
     background: "#06b6d4",
     borderColor: "#a5f3fc",
     glyphColor: "#ffffff",
-    glyphText: storyCount > 1 ? String(storyCount) : "S",
-    scale: 1.15,
+    glyphSrc: new URL(profileImage, window.location.origin),
+    scale: 1.25,
   });
 
-  pin.title = story?.username
-    ? `${story.username} · ${storyCount} ${storyCount === 1 ? "story" : "stories"}`
+  pin.title = story?.userId?.username
+    ? `${story.userId.username} · ${storyCount} ${storyCount === 1 ? "story" : "stories"}`
     : `${storyCount} ${storyCount === 1 ? "story" : "stories"}`;
 
   return pin;
