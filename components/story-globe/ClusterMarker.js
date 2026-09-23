@@ -4,7 +4,10 @@ import { useEffect } from "react";
 
 export default function ClusterMarker({ map, lng, lat, count, onClick }) {
   useEffect(() => {
-    if (!map || !window.google?.maps?.marker?.AdvancedMarkerElement) {
+    const Marker3DInteractiveElement =
+      window.google?.maps?.maps3d?.Marker3DInteractiveElement;
+
+    if (!map || !Marker3DInteractiveElement) {
       return undefined;
     }
 
@@ -32,22 +35,27 @@ export default function ClusterMarker({ map, lng, lat, count, onClick }) {
     button.addEventListener("mouseleave", () => {
       button.style.transform = "scale(1)";
     });
-    button.addEventListener("click", onClick);
 
-    const marker =
-      new window.google.maps.marker.AdvancedMarkerElement({
-        map,
-        position: {
-          lat: Number(lat),
-          lng: Number(lng),
-        },
-        content: button,
-        title: `${count} stories`,
-        gmpClickable: true,
-      });
+    const marker = new Marker3DInteractiveElement({
+      position: {
+        lat: Number(lat),
+        lng: Number(lng),
+        altitude: 0,
+      },
+      altitudeMode: "CLAMP_TO_GROUND",
+      title: `${count} stories`,
+      drawsWhenOccluded: true,
+    });
+
+    marker.append(button);
+
+    const handleClick = () => onClick();
+    marker.addEventListener("gmp-click", handleClick);
+    map.append(marker);
 
     return () => {
-      marker.map = null;
+      marker.removeEventListener("gmp-click", handleClick);
+      marker.remove();
     };
   }, [map, lng, lat, count, onClick]);
 
