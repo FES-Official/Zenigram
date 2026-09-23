@@ -401,7 +401,8 @@ export default function StoryGlobe() {
           }
 
           const Map3DElement = maps3d?.Map3DElement;
-          if (!Map3DElement) {
+          const GestureHandling = maps3d?.GestureHandling;
+          if (!Map3DElement || !GestureHandling) {
             throw new Error("Google 3D Maps is not available for this API key.");
           }
 
@@ -412,7 +413,7 @@ export default function StoryGlobe() {
             heading: -8,
             mode: "HYBRID",
             mapId: GOOGLE_MAP_ID,
-            gestureHandling: "greedy",
+            gestureHandling: GestureHandling.GREEDY,
             defaultUIHidden: false,
             minTilt: 0,
             maxTilt: 80,
