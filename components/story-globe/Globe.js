@@ -259,9 +259,6 @@ export default function StoryGlobe() {
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState("");
-  
-
-const [mapInstance, setMapInstance] = useState(null);
 
   const loadStories = useCallback(
     async (reset = false, cursor = "") => {
@@ -395,31 +392,46 @@ const [mapInstance, setMapInstance] = useState(null);
           return;
         }
 
-        const map = new google.maps.Map(mapContainerRef.current, {
-          center: DEFAULT_CENTER,
-          zoom: DEFAULT_ZOOM,
-          minZoom: 1,
-          maxZoom: 18,
-          mapTypeId: "satellite",
-          mapId: GOOGLE_MAP_ID,
-          gestureHandling: "greedy",
-          disableDefaultUI: false,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: true,
-          zoomControl: true,
-          rotateControl: true,
-          cameraControl: false,
-          clickableIcons: false,
-          keyboardShortcuts: true,
-          isFractionalZoomEnabled: true,
-          backgroundColor: "#03070d",
-          tilt: 0,
-          heading: 0,
-        });
+        return Promise.all([
+          google.maps.importLibrary("maps3d"),
+          google.maps.importLibrary("geocoding"),
+        ]).then(([maps3d]) => {
+          if (cancelled || !mapContainerRef.current || mapRef.current) {
+            return;
+          }
 
-        mapRef.current = map;
-        setMapsReady(true);
+          const Map3DElement = maps3d?.Map3DElement;
+          if (!Map3DElement) {
+            throw new Error("Google 3D Maps is not available for this API key.");
+          }
+
+          const map = new Map3DElement({
+            center: { ...DEFAULT_CENTER, altitude: 0 },
+            range: 24000000,
+            tilt: 0,
+            heading: -8,
+            mode: "HYBRID",
+            mapId: GOOGLE_MAP_ID,
+            gestureHandling: "greedy",
+            defaultUIHidden: false,
+            minTilt: 0,
+            maxTilt: 80,
+            minAltitude: 0,
+            maxAltitude: 63170000,
+            fov: 55,
+            language: "en",
+          });
+
+          map.setAttribute("aria-label", "Zenigram Stories Globe");
+          map.style.width = "100%";
+          map.style.height = "100%";
+          map.style.display = "block";
+          map.style.background = "#03070d";
+
+          mapContainerRef.current.appendChild(map);
+          mapRef.current = map;
+          setMapsReady(true);
+        });
       })
       .catch((loadError) => {
         if (!cancelled) {
@@ -441,8 +453,12 @@ const [mapInstance, setMapInstance] = useState(null);
   useEffect(() => {
     if (!mapRef.current || !mapsReady) return undefined;
 
+    const map = mapRef.current;
+
     const resize = () => {
-      window.google?.maps?.event?.trigger(mapRef.current, "resize");
+      if (!map || !map.isConnected) return;
+      map.style.width = "100%";
+      map.style.height = "100%";
     };
 
     const timer = window.setTimeout(resize, 80);
@@ -485,7 +501,10 @@ const [mapInstance, setMapInstance] = useState(null);
       return;
     }
 
-    if (!mapRef.current || !window.google?.maps?.Geocoder) {
+    if (
+      !mapRef.current ||
+      !window.google?.maps?.Geocoder
+    ) {
       setSearchError("Google Maps is still loading.");
       return;
     }
@@ -494,7 +513,10 @@ const [mapInstance, setMapInstance] = useState(null);
       setSearching(true);
       setSearchError("");
 
-      const geocoder = new window.google.maps.Geocoder();
+      const { Geocoder } = await window.google.maps.importLibrary(
+        "geocoding"
+      );
+      const geocoder = new Geocoder();
 
       const response = await geocoder.geocode({
         address: query,
@@ -512,11 +534,38 @@ const [mapInstance, setMapInstance] = useState(null);
         lng: location.lng(),
       };
 
-      mapRef.current.panTo(target);
+      const types = result?.types || [];
+      let range = 120000;
 
-      window.setTimeout(() => {
-        mapRef.current?.setZoom(6);
-      }, 300);
+      if (types.includes("country")) {
+        range = 2400000;
+      } else if (types.includes("administrative_area_level_1")) {
+        range = 650000;
+      } else if (
+        types.includes("locality") ||
+        types.includes("administrative_area_level_2")
+      ) {
+        range = 90000;
+      } else if (
+        types.includes("street_address") ||
+        types.includes("premise")
+      ) {
+        range = 12000;
+      }
+
+      mapRef.current.flyCameraTo({
+        endCamera: {
+          center: {
+            lat: target.lat,
+            lng: target.lng,
+            altitude: 0,
+          },
+          range,
+          tilt: types.includes("locality") ? 55 : 35,
+          heading: -8,
+        },
+        durationMillis: 1400,
+      });
     } catch (searchLoadError) {
       setSearchError(
         searchLoadError?.message || "Location search failed."
@@ -538,12 +587,19 @@ const [mapInstance, setMapInstance] = useState(null);
     const map = mapRef.current;
     if (!map) return;
 
-    map.panTo(DEFAULT_CENTER);
-    window.setTimeout(() => {
-      mapRef.current?.setZoom(DEFAULT_ZOOM + 0.65);
-      mapRef.current?.setTilt(0);
-      mapRef.current?.setHeading(-8);
-    }, 300);
+    map.flyCameraTo({
+      endCamera: {
+        center: {
+          lat: DEFAULT_CENTER.lat,
+          lng: DEFAULT_CENTER.lng,
+          altitude: 0,
+        },
+        range: 24000000,
+        tilt: 0,
+        heading: -8,
+      },
+      durationMillis: 900,
+    });
   }, []);
 
   if (!GOOGLE_MAPS_API_KEY || mapError) {
