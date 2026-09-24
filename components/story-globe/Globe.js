@@ -59,7 +59,7 @@ function loadGoogleMaps(apiKey) {
     script.src =
       "https://maps.googleapis.com/maps/api/js?key=" +
       encodeURIComponent(apiKey) +
-      "&v=weekly&libraries=marker";
+      "&v=weekly&loading=async&libraries=marker";
     script.async = true;
     script.defer = true;
 
