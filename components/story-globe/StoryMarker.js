@@ -3,16 +3,15 @@
 import { useEffect } from "react";
 
 function createPin(story, storyCount, PinElement) {
-  const profileImage =
-    story?.userId?.profilePic ||
-    story?.profilePic ||
-    "/user.svg";
+  const profileImageUrl = story?._id
+    ? `/api/story-globe/profile-image?storyId=${encodeURIComponent(story._id)}`
+    : "/user.svg";
 
   const pin = new PinElement({
     background: "#06b6d4",
     borderColor: "#a5f3fc",
     glyphColor: "#ffffff",
-    glyphSrc: new URL(profileImage, window.location.origin),
+    glyphSrc: new URL(profileImageUrl, window.location.origin),
     scale: 1.25,
   });
 
