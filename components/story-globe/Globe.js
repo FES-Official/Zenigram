@@ -29,7 +29,7 @@ function loadGoogleMaps(apiKey) {
     return Promise.reject(new Error("Google Maps can only load in a browser."));
   }
 
-  if (window.google?.maps?.Map) {
+  if (window.google?.maps?.importLibrary) {
     return Promise.resolve(window.google);
   }
 
@@ -38,17 +38,36 @@ function loadGoogleMaps(apiKey) {
   }
 
   googleMapsLoaderPromise = new Promise((resolve, reject) => {
+    const callbackName = "__zenigramGoogleMapsReady";
+
+    window[callbackName] = () => {
+      const google = window.google;
+      if (google?.maps?.importLibrary) {
+        resolve(google);
+      } else {
+        reject(new Error("Google Maps loaded without the Maps API."));
+      }
+      delete window[callbackName];
+    };
+
     const existingScript = document.getElementById(
       "zenigram-google-maps-script"
     );
 
     if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(window.google), {
-        once: true,
-      });
+      const google = window.google;
+      if (google?.maps?.importLibrary) {
+        resolve(google);
+        delete window[callbackName];
+        return;
+      }
+
       existingScript.addEventListener(
         "error",
-        () => reject(new Error("Google Maps failed to load.")),
+        () => {
+          delete window[callbackName];
+          reject(new Error("Google Maps failed to load."));
+        },
         { once: true }
       );
       return;
@@ -59,20 +78,15 @@ function loadGoogleMaps(apiKey) {
     script.src =
       "https://maps.googleapis.com/maps/api/js?key=" +
       encodeURIComponent(apiKey) +
-      "&v=weekly&loading=async&libraries=marker";
+      "&v=weekly&loading=async&libraries=maps3d,marker,geocoding&callback=" +
+      encodeURIComponent(callbackName);
     script.async = true;
     script.defer = true;
 
-    script.onload = () => {
-      if (window.google?.maps?.Map) {
-        resolve(window.google);
-      } else {
-        reject(new Error("Google Maps loaded without the Maps API."));
-      }
-    };
-
-    script.onerror = () =>
+    script.onerror = () => {
+      delete window[callbackName];
       reject(new Error("Unable to load Google Maps."));
+    };
 
     document.head.appendChild(script);
   });
