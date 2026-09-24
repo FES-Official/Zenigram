@@ -5,9 +5,8 @@ import { getStory } from "@/app/lib/storyStore";
 import {
   getS3Client,
   getS3Config,
-  getUserById,
 } from "@/app/lib/s3Storage";
-import { getUserRelations } from "@/app/lib/socialStore";
+import { getUserById, getUserRelations } from "@/app/lib/socialStore";
 
 export const runtime = "nodejs";
 
@@ -44,10 +43,12 @@ export async function GET(req) {
           blockedByUsers: [],
         };
 
-    const blocked = new Set([
-      ...(relations.blockedUsers || []),
-      ...(relations.blockedByUsers || []),
-    ].map(String));
+    const blocked = new Set(
+      [
+        ...(relations.blockedUsers || []),
+        ...(relations.blockedByUsers || []),
+      ].map(String),
+    );
 
     if (viewerId && viewerId !== ownerId && blocked.has(ownerId)) {
       return new Response("Forbidden", { status: 403 });
