@@ -77,4 +77,13 @@ npm run aws:setup
 (`ETag` must be exposed for multipart completion), and merges the multipart
 cleanup lifecycle rule.
 
+
+## User-controlled feed
+
+Zenigram's home feed includes a Feed Control Center. Users can choose Balanced, Your circle, Latest, My interests, or Discover; adjust topic preferences and source weights; and save those rules to their DynamoDB profile. Each post also offers "Why am I seeing this?" and controls for showing more or less of a topic, muting a topic, changing a creator's influence, or hiding a creator from the feed.
+
+Feed preferences are served by `/api/feed-preferences` and applied to visible post candidates by `src/app/lib/feedRanking.js`. Visibility and account/privacy filters run before personalized ranking. "Latest" is chronological. Other modes use transparent, deterministic weights for selected interests, circle relationships, freshness, discovery, engagement, and optional creator adjustments.
+
+Topic labels are currently inferred from captions and hashtags with a lightweight keyword map. This is a first version, not a machine-learning classifier; ambiguous captions may be categorized imperfectly. A future improvement is allowing creators to tag posts explicitly and adding cursor-based feed pagination.
+
 <!-- CI verification trigger: story location picker fix -->
