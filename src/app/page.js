@@ -1076,7 +1076,7 @@ function FeedPost({
 
           {showFeedControls && (
             <div className="mt-3 rounded-2xl border border-red-500/15 bg-red-950/10 p-3">
-              <p className="text-xs font-bold text-zinc-100">This post's feed signals</p>
+              <p className="text-xs font-bold text-zinc-100">This post&apos;s feed signals</p>
               <ul className="mt-2 space-y-1 text-[11px] leading-5 text-zinc-400">
                 {(Array.isArray(post.feedReasons) && post.feedReasons.length
                   ? post.feedReasons
