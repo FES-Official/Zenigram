@@ -784,7 +784,7 @@ async function hydratePosts(posts, viewerId) {
   })));
 }
 
-export async function listFeedPosts(viewerId, limit = 80) {
+export async function listFeedPosts(viewerId, limit = 80, providedRelations = null) {
   const result = await client().send(
     new QueryCommand({
       TableName: table(),

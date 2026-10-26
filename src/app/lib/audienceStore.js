@@ -62,11 +62,11 @@ export async function canViewContent(content, viewerId, ownerUser = null, relati
   return true;
 }
 
-export async function listVisiblePosts(viewerId, limit = 80) {
+export async function listVisiblePosts(viewerId, limit = 80, providedRelations = null) {
   if (!viewerId) return [];
   const [posts, relations] = await Promise.all([
-    listFeedPosts(viewerId, limit),
-    getUserRelations(viewerId),
+    listFeedPosts(viewerId, limit, providedRelations),
+    providedRelations ? Promise.resolve(providedRelations) : getUserRelations(viewerId),
   ]);
   const close = normalizeIds(relations.closeOnes);
   const blocked = new Set([

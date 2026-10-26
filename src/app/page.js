@@ -15,6 +15,7 @@ import Likebtn from "../../components/likebtn";
 import PostMediaCarousel from "../../components/PostMediaCarousel";
 import PostShareDialog from "../../components/PostShareDialog";
 import PostLikesModal from "../../components/PostLikesModal";
+import FeedControlCenter from "../../components/FeedControlCenter";
 
 const FALLBACK_AVATAR =
   "/black-person-profile-icon-round-3d-ui-button-vector-illustration_541075-900.avif";
@@ -80,6 +81,7 @@ export default function Page() {
   const router = useRouter();
 
   const [posts, setPosts] = useState([]);
+  const [feedPreferences, setFeedPreferences] = useState(null);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [recentConversations, setRecentConversations] = useState([]);
   const [supportSuggestions, setSupportSuggestions] = useState([]);
@@ -93,6 +95,36 @@ export default function Page() {
   const [error, setError] = useState("");
 
   const sessionUserId = session?.user?.id ? String(session.user.id) : "";
+
+  const refreshFeedPosts = useCallback(async () => {
+    const data = await requestJson("/api/posts", { cache: "no-store" });
+    setPosts(Array.isArray(data?.post) ? data.post : []);
+    setFeedPreferences(data?.feedPreferences || null);
+  }, []);
+
+  const handleFeedFeedback = useCallback(async (feedback) => {
+    try {
+      setError("");
+      const data = await requestJson("/api/feed-preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(feedback),
+      });
+      setFeedPreferences(data.preferences || null);
+      await refreshFeedPosts();
+    } catch (feedbackError) {
+      setError(feedbackError.message || "Could not update your feed rules.");
+    }
+  }, [refreshFeedPosts]);
+
+  const handleFeedPreferencesSaved = useCallback(async (preferences) => {
+    setFeedPreferences(preferences);
+    try {
+      await refreshFeedPosts();
+    } catch (refreshError) {
+      setError(refreshError.message || "Your rules were saved, but the feed could not refresh.");
+    }
+  }, [refreshFeedPosts]);
 
   /* -----------------------------------------------------
      Authentication
@@ -132,6 +164,7 @@ export default function Page() {
         ]);
 
         setPosts(Array.isArray(data?.post) ? data.post : []);
+        setFeedPreferences(data?.feedPreferences || null);
         setRecentConversations(
           Array.isArray(conversationsData?.conversations)
             ? conversationsData.conversations.slice(0, 5)
@@ -373,6 +406,7 @@ export default function Page() {
             {/* Stories Globe */}
             <StoriesGlobeCard />
             <HomeClipsRail clips={homeClips} />
+            <FeedControlCenter preferences={feedPreferences} onSaved={handleFeedPreferencesSaved} />
             <MobileDiscoveryRail
               conversations={recentConversations}
               suggestions={supportSuggestions}
@@ -438,6 +472,7 @@ export default function Page() {
                   onShare={() => setSharePost(post)}
                   onLikes={() => setLikesPost(post)}
                   onSavedChange={(saved) => updatePost(post._id, { viewerSaved: saved })}
+                  onFeedFeedback={handleFeedFeedback}
                 />
                 {index % 3 === 2 && homeClips[Math.floor(index / 3)] && <InlineClipCard clip={homeClips[Math.floor(index / 3)]} />}
               </div>
@@ -783,12 +818,14 @@ function FeedPost({
   onShare,
   onLikes,
   onSavedChange,
+  onFeedFeedback,
 }) {
   const likeHandlers = useRef(null);
 
   const [saved, setSaved] = useState(Boolean(post.viewerSaved));
 
   const [saving, setSaving] = useState(false);
+  const [showFeedControls, setShowFeedControls] = useState(false);
 
   /*
     Important:
@@ -1024,6 +1061,89 @@ function FeedPost({
         >
           View comments
         </button>
+
+        {/* User-controlled feed feedback */}
+        <div className="mt-4 border-t border-white/8 pt-3">
+          <button
+            type="button"
+            aria-expanded={showFeedControls}
+            onClick={() => setShowFeedControls((visible) => !visible)}
+            className="inline-flex items-center gap-2 rounded-lg py-1 text-xs font-semibold text-red-300 transition hover:text-red-200"
+          >
+            <span aria-hidden="true">☷</span>
+            {showFeedControls ? "Hide feed controls" : "Why am I seeing this?"}
+          </button>
+
+          {showFeedControls && (
+            <div className="mt-3 rounded-2xl border border-red-500/15 bg-red-950/10 p-3">
+              <p className="text-xs font-bold text-zinc-100">This post&apos;s feed signals</p>
+              <ul className="mt-2 space-y-1 text-[11px] leading-5 text-zinc-400">
+                {(Array.isArray(post.feedReasons) && post.feedReasons.length
+                  ? post.feedReasons
+                  : ["Ranked using your current feed mode and preferences."]
+                ).map((reason) => <li key={reason}>• {reason}</li>)}
+              </ul>
+
+              {Array.isArray(post.feedTopics) && post.feedTopics.length > 0 && (
+                <p className="mt-2 text-[11px] text-zinc-500">
+                  Detected topics: {post.feedTopics.join(", ")}
+                </p>
+              )}
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {Array.isArray(post.feedTopics) && post.feedTopics.length > 0 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void onFeedFeedback?.({ action: "moreTopic", topic: post.feedTopics[0] })}
+                      className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-left text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/10"
+                    >
+                      + Show more {post.feedTopics[0]}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void onFeedFeedback?.({ action: "lessTopic", topic: post.feedTopics[0] })}
+                      className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-left text-[11px] font-semibold text-amber-200 hover:bg-amber-500/10"
+                    >
+                      − Show less {post.feedTopics[0]}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void onFeedFeedback?.({ action: "muteTopic", topic: post.feedTopics[0] })}
+                      className="rounded-xl border border-white/10 px-3 py-2 text-left text-[11px] font-semibold text-zinc-300 hover:bg-white/5"
+                    >
+                      Hide this topic
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void onFeedFeedback?.({ action: "moreCreator", creatorId: String(post.userId || post.user?._id || "") })}
+                      className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-left text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/10"
+                    >
+                      More from {username}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void onFeedFeedback?.({ action: "lessCreator", creatorId: String(post.userId || post.user?._id || "") })}
+                      className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-left text-[11px] font-semibold text-amber-200 hover:bg-amber-500/10"
+                    >
+                      Less from {username}
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void onFeedFeedback?.({ action: "muteCreator", creatorId: String(post.userId || post.user?._id || "") })}
+                  className="rounded-xl border border-red-500/20 px-3 py-2 text-left text-[11px] font-semibold text-red-200 hover:bg-red-500/10"
+                >
+                  Hide this creator
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </article>
   );

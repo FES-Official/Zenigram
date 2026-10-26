@@ -4,8 +4,9 @@ import { cookies } from "next/headers";
 import { authOptions } from "@/app/lib/auth";
 import { jsonError, jsonOk, normalizeString } from "@/app/lib/api";
 import { verifyS3Object } from "@/app/lib/s3Storage";
-import { createPost, getUserById } from "@/app/lib/socialStore";
+import { createPost, getUserById, getUserRelations } from "@/app/lib/socialStore";
 import { listVisiblePosts, setContentAudience } from "@/app/lib/audienceStore";
+import { normalizeFeedPreferences, rankFeedPosts } from "@/app/lib/feedRanking";
 
 const MAX_IMAGES_PER_POST = 10;
 const PRESENTATIONS = new Set(["single", "carousel", "grid"]);
@@ -58,8 +59,21 @@ export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) return jsonError("Unauthorized", 401);
-    const post = await listVisiblePosts(session.user.id);
-    return NextResponse.json({ post }, { status: 200 });
+
+    const viewerId = String(session.user.id);
+    const [user, relations] = await Promise.all([
+      getUserById(viewerId),
+      getUserRelations(viewerId),
+    ]);
+    const preferences = normalizeFeedPreferences(user?.feedPreferences);
+    const visiblePosts = await listVisiblePosts(viewerId, 80, relations);
+    const post = rankFeedPosts(
+      visiblePosts,
+      preferences,
+      { ...relations, viewerId },
+    );
+
+    return NextResponse.json({ post, feedPreferences: preferences }, { status: 200 });
   } catch (err) {
     console.error("Posts fetch error:", err);
     return NextResponse.json({ error: "Database connection failed", message: err.message }, { status: 500 });
