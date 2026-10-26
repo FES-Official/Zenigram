@@ -65,7 +65,7 @@ export async function canViewContent(content, viewerId, ownerUser = null, relati
 export async function listVisiblePosts(viewerId, limit = 80, providedRelations = null) {
   if (!viewerId) return [];
   const [posts, relations] = await Promise.all([
-    listFeedPosts(viewerId, limit),
+    listFeedPosts(viewerId, limit, providedRelations),
     providedRelations ? Promise.resolve(providedRelations) : getUserRelations(viewerId),
   ]);
   const close = normalizeIds(relations.closeOnes);
