@@ -1,4 +1,5 @@
 import { randomBytes } from "crypto";
+import { sanitizeUserRecord } from "@/app/lib/userSerialization";
 import {
   BatchGetCommand,
   BatchWriteCommand,
@@ -65,8 +66,7 @@ function cleanItem(item, { includePassword = false } = {}) {
   delete value.GSI1SK;
   delete value.GSI2PK;
   delete value.GSI2SK;
-  if (!includePassword) delete value.password;
-  return value;
+  return includePassword ? value : sanitizeUserRecord(value);
 }
 
 const MAX_BATCH_UNPROCESSED_RETRIES = 6;
