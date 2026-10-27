@@ -6,6 +6,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { sanitizePublicUserRecord } from "@/app/lib/userSerialization";
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -112,12 +113,13 @@ export async function getReadableMediaUrl(value, key = "") {
   return url;
 }
 
-export async function hydrateUserMedia(user) {
+export async function hydrateUserMedia(user, { includePrivateFields = false } = {}) {
   if (!user) return user;
-  return {
+  const hydrated = {
     ...user,
     profilePic: await getReadableMediaUrl(user.profilePic, user.profilePicKey),
   };
+  return includePrivateFields ? hydrated : sanitizePublicUserRecord(hydrated);
 }
 
 export async function hydrateMediaItem(item) {
