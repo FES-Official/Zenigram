@@ -10,6 +10,7 @@
     "aws:setup": "node scripts/setup-aws-storage.mjs",
     "aws:migrate:dynamodb": "node scripts/migrate-dynamodb-region.mjs",
     "build": "next build",
+    "test": "node --test",
     "start": "node server.js --prod",
     "lint": "eslint --rule 'react-hooks/refs: off'"
   },
