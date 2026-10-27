@@ -3,6 +3,7 @@ import { getDynamoDocumentClient, getDynamoTableName } from "@/app/lib/dynamodb"
 import { getPost, getUserById, getUserRelations } from "@/app/lib/socialStore";
 import { canViewContent } from "@/app/lib/audienceStore";
 import { hydratePostMedia } from "@/app/lib/s3Storage";
+import { sanitizePublicUserRecord } from "@/app/lib/userSerialization";
 
 const client = () => getDynamoDocumentClient();
 const table = () => getDynamoTableName();
@@ -27,7 +28,7 @@ export async function getSafePostForViewer(postId, viewerId) {
 
   return {
     ...hydrated,
-    user: owner,
+    user: sanitizePublicUserRecord(owner),
     likes: like.Item ? [viewerId] : [],
     viewerLiked: Boolean(like.Item),
     viewerSaved: Boolean(saved.Item),
