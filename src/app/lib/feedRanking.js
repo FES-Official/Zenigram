@@ -99,6 +99,10 @@ export function inferPostTopics(post = {}) {
     if (topic) topics.add(topic);
   });
 
+  // Explicit creator-selected topics are authoritative. Only infer topics
+  // from captions/hashtags when the creator did not supply valid topic tags.
+  if (topics.size) return [...topics];
+
   const text = String(post.caption || "").toLowerCase();
   const hashtags = text.match(/#([a-z0-9_]+)/g) || [];
   hashtags.forEach((tag) => {
