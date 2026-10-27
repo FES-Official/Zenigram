@@ -19,6 +19,7 @@ import {
   IoTrashOutline,
 } from "react-icons/io5";
 import { uploadMediaDirect } from "@/app/lib/directS3Upload";
+import TopicPicker from "../../../components/TopicPicker";
 import Image from "next/image";
 
 const MAX_IMAGES = 10;
@@ -432,6 +433,7 @@ export default function ImageEditor({
   const [gap, setGap] = useState(3);
   const [radius, setRadius] = useState(10);
   const [caption, setCaption] = useState("");
+  const [selectedTopics, setSelectedTopics] = useState([]);
   const [activeTab, setActiveTab] = useState("format");
   const [previewIndex, setPreviewIndex] = useState(0);
   const [direction, setDirection] = useState(1);
@@ -642,6 +644,7 @@ export default function ImageEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           caption: caption.trim(),
+          topics: selectedTopics,
           mediaItems,
           presentation: isGrid
             ? "grid"
@@ -1170,6 +1173,7 @@ export default function ImageEditor({
                     className="w-full resize-none rounded-2xl border border-red-950 bg-black/40 p-3 text-sm outline-none placeholder:text-zinc-700 focus:border-red-600"
                   />
                 </label>
+                <TopicPicker selectedTopics={selectedTopics} onChange={setSelectedTopics} max={5} />
                 <div className="mt-4 rounded-2xl border border-red-900/40 bg-red-950/20 p-3 text-xs leading-5 text-zinc-500">
                   <strong className="text-red-200">High-quality export</strong>
                   <br />
