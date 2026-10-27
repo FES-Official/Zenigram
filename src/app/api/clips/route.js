@@ -22,7 +22,8 @@ function normalizeTimeline(items, mediaCount) {
 export async function GET(req) {
   try {
     const session = await getServerSession(authOptions);
-    const rawLimit = Number(new URL(req.url).searchParams.get("limit"));
+    const limitValue = new URL(req.url).searchParams.get("limit");
+    const rawLimit = limitValue === null ? 80 : Number(limitValue);
     const limit = Number.isSafeInteger(rawLimit) ? Math.min(80, Math.max(1, rawLimit)) : 80;
     const viewerId = session?.user?.id ? String(session.user.id) : "guest";
     const guestRelations = {
