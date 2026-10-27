@@ -2695,7 +2695,7 @@ export async function listClips(viewerId, limit = 80, providedRelations = null, 
     providedRelations || (viewerId && viewerId !== "guest"
       ? await getUserRelations(viewerId)
       : { blockedUsers: [], blockedByUsers: [], supporting: [], savedClips: [] }),
-    options.preserveCandidatePool ? Promise.resolve([]) : listClipSignals(viewerId),
+    listClipSignals(viewerId),
   ]);
   const excludedUsers = new Set([
     ...(relations.blockedUsers || []),
