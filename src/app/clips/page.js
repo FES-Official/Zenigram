@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import Navbar from "../../../components/navbar";
 import ClipReelPlayer from "../../../components/ClipReelPlayer";
 import ClipCommentsDialog from "../../../components/ClipCommentsDialog";
@@ -89,6 +90,8 @@ function ReelMetric({ icon, value }) {
 }
 
 export default function ClipsPage() {
+  const { data: session } = useSession();
+  const currentUserId = String(session?.user?.id || "");
   const [clips, setClips] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -219,6 +222,41 @@ export default function ClipsPage() {
   const handleDoubleLike = (clip) => {
     if (!clip.viewerLiked && !updatingClips.has(`${clip._id}-like`)) {
       void handleLike(clip._id);
+    }
+  };
+
+  const handleFeedFeedback = async (feedback) => {
+    if (!currentUserId) {
+      setError("Sign in to customize your feed.");
+      return;
+    }
+
+    try {
+      setError("");
+      const response = await fetch("/api/feed-preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(feedback),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to update your feed rules");
+
+      const feedResponse = await fetch("/api/clips?limit=80", { cache: "no-store" });
+      const feedData = await feedResponse.json();
+      if (!feedResponse.ok) throw new Error(feedData.message || "Your rules were saved, but clips could not refresh");
+
+      const nextClips = Array.isArray(feedData.clips) ? feedData.clips : [];
+      setClips(nextClips);
+      setActiveClipId((currentId) =>
+        nextClips.some((item) => String(item._id) === String(currentId))
+          ? currentId
+          : nextClips[0]?._id || null,
+      );
+      setOptionsClip(null);
+      setNotice("Your feed rules were updated");
+      window.setTimeout(() => setNotice(""), 2200);
+    } catch (err) {
+      setError(err.message || "Unable to update your feed rules");
     }
   };
 
@@ -376,7 +414,14 @@ export default function ClipsPage() {
           />
         )}
         {optionsClip && (
-          <ClipOptions clip={optionsClip} onClose={() => setOptionsClip(null)} onPreference={(action) => void handlePreference(action)} onSave={() => void handleSave()} />
+          <ClipOptions
+            clip={optionsClip}
+            currentUserId={currentUserId}
+            onClose={() => setOptionsClip(null)}
+            onPreference={(action) => void handlePreference(action)}
+            onFeedFeedback={(feedback) => void handleFeedFeedback(feedback)}
+            onSave={() => void handleSave()}
+          />
         )}
       </AnimatePresence>
     </main>
