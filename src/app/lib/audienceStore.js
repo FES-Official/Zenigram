@@ -36,9 +36,12 @@ export async function setContentAudience(kind, contentId, ownerId, closeOnesOnly
     TableName: table(),
     Key: key,
     UpdateExpression: "SET closeOnesOnly = :close, updatedAt = :now",
-    ExpressionAttributeValues: { ":close": next, ":now": new Date().toISOString() },
+    ExpressionAttributeValues: {
+      ":close": next,
+      ":now": new Date().toISOString(),
+      ":owner": ownerId,
+    },
     ConditionExpression: "attribute_exists(PK) AND userId = :owner",
-    ExpressionAttributeValues: { ":close": next, ":now": new Date().toISOString(), ":owner": ownerId },
   }));
   return { ...clean(result.Item), closeOnesOnly: next };
 }
