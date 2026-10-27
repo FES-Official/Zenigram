@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { uploadMediaDirect } from "@/app/lib/directS3Upload";
+import TopicPicker from "../../../components/TopicPicker";
 
 const MAX_DURATION = 120;
 const MAX_ITEMS = 20;
@@ -47,6 +48,7 @@ export default function CreateClipPage() {
   const [items, setItems] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [caption, setCaption] = useState("");
+  const [selectedTopics, setSelectedTopics] = useState([]);
   const [transition, setTransition] = useState("fade");
   const [textLayers, setTextLayers] = useState([]);
   const [selectedTextId, setSelectedTextId] = useState(null);
@@ -200,21 +202,73 @@ export default function CreateClipPage() {
       setSaving(true);
       setProgress(0);
       setError("");
-      const mediaItems = [];
-      for (let index = 0; index < items.length; index += 1) {
-        const uploaded = await uploadMediaDirect(items[index].file, {
-          onProgress: (value) => {
-            const percent = value <= 1 ? value * 100 : value;
-            setProgress(Math.round(((index + percent / 100) / items.length) * 92));
-          },
-        });
-        mediaItems.push({ key: uploaded.key, type: items[index].type });
-      }
+      // Upload clip assets in parallel while preserving timeline order.
+      // Large videos already use multipart chunk concurrency, so limit them to
+      // two simultaneous files; lightweight assets can use four workers.
+      const progressByItem = items.map(() => 0);
+      const totalBytes = items.reduce(
+        (sum, item) => sum + Math.max(1, Number(item.file?.size) || 1),
+        0,
+      );
+      const hasLargeVideo = items.some(
+        (item) =>
+          item.type === "video" &&
+          Number(item.file?.size) >= 10 * 1024 * 1024,
+      );
+      const workerCount = Math.min(items.length, hasLargeVideo ? 2 : 4);
+      const uploadedItems = new Array(items.length);
+      let nextIndex = 0;
+      let uploadError = null;
+
+      const reportProgress = () => {
+        const loadedBytes = items.reduce((sum, item, index) => {
+          const bytes = Math.max(1, Number(item.file?.size) || 1);
+          return sum + bytes * (progressByItem[index] / 100);
+        }, 0);
+        setProgress(Math.min(90, Math.round((loadedBytes / totalBytes) * 90)));
+      };
+
+      const workers = Array.from({ length: workerCount }, async () => {
+        while (!uploadError) {
+          const index = nextIndex++;
+          if (index >= items.length) return;
+
+          try {
+            const uploaded = await uploadMediaDirect(items[index].file, {
+              onProgress: (value) => {
+                const percent = Number(value) || 0;
+                progressByItem[index] = Math.max(
+                  progressByItem[index],
+                  Math.min(100, Math.max(0, percent)),
+                );
+                reportProgress();
+              },
+            });
+
+            uploadedItems[index] = {
+              key: uploaded.key,
+              type: items[index].type,
+            };
+            progressByItem[index] = 100;
+            reportProgress();
+          } catch (error) {
+            uploadError = error;
+            return;
+          }
+        }
+      });
+
+      await Promise.all(workers);
+      if (uploadError) throw uploadError;
+
+      const mediaItems = uploadedItems;
+      setProgress(92);
       const response = await fetch("/api/clips", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           caption,
+          topics: selectedTopics,
           mediaItems,
           timeline: items.map((item, index) => ({
             mediaIndex: index,
@@ -307,6 +361,7 @@ export default function CreateClipPage() {
             {selectedItem && <div className="mt-5 border-t border-white/7 pt-4"><div className="flex items-center justify-between"><h2 className="font-bold">Selected segment</h2><span className="text-[10px] text-red-300">{selectedItem.type}</span></div><Range label="Duration" value={selectedItem.duration} min={0.5} max={Math.min(30, selectedItem.type === "video" ? Math.max(0.5, selectedItem.sourceDuration - selectedItem.trimStart) : 12)} step={0.5} suffix="s" onChange={(duration) => updateItem(selectedItem.id, { duration })}/>{selectedItem.type === "video" && <Range label="Trim start" value={selectedItem.trimStart} min={0} max={Math.max(0, selectedItem.sourceDuration - selectedItem.duration)} step={0.5} suffix="s" onChange={(trimStart) => updateItem(selectedItem.id, { trimStart })}/>}<p className="mb-2 mt-4 text-xs text-zinc-500">Look</p><div className="grid grid-cols-3 gap-1.5">{FILTERS.map((filter) => <button key={filter.id} type="button" onClick={() => updateItem(selectedItem.id, { filter: filter.id })} className={`rounded-xl border py-2 text-[10px] ${selectedItem.filter === filter.id ? "border-red-400 bg-red-500/15" : "border-red-950 bg-black/25"}`}>{filter.label}</button>)}</div></div>}
             {selectedText && <div className="mt-5 border-t border-white/7 pt-4"><div className="flex items-center justify-between"><h2 className="font-bold">Text overlay</h2><button type="button" onClick={() => { setTextLayers((current) => current.filter((item) => item.id !== selectedText.id)); setSelectedTextId(null); }} className="text-xs text-red-400">Delete</button></div><input value={selectedText.text} onChange={(event) => updateText({ text: event.target.value.slice(0, 180) })} className="mt-3 w-full rounded-xl border border-red-950 bg-black/30 px-3 py-2 text-sm outline-none focus:border-red-500"/><select aria-label="Text font" value={selectedText.fontFamily} onChange={(event) => updateText({ fontFamily: event.target.value })} className="mt-3 w-full rounded-xl border border-red-950 bg-black/50 p-2.5 text-xs">{FONT_FAMILIES.map((font) => <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>)}</select><div className="mt-2 grid grid-cols-4 gap-1"><button type="button" onClick={() => updateText({ fontWeight: selectedText.fontWeight === 700 ? 400 : 700 })} className={`rounded-lg py-2 text-xs font-black ${selectedText.fontWeight === 700 ? "bg-red-600" : "bg-black/30"}`}>B</button><button type="button" onClick={() => updateText({ italic: !selectedText.italic })} className={`rounded-lg py-2 text-xs italic ${selectedText.italic ? "bg-red-600" : "bg-black/30"}`}>I</button><button type="button" onClick={() => updateText({ underline: !selectedText.underline })} className={`rounded-lg py-2 text-xs underline ${selectedText.underline ? "bg-red-600" : "bg-black/30"}`}>U</button><button type="button" onClick={() => updateText({ strike: !selectedText.strike })} className={`rounded-lg py-2 text-xs line-through ${selectedText.strike ? "bg-red-600" : "bg-black/30"}`}>S</button></div><div className="mt-3 grid grid-cols-3 gap-2"><label className="text-[10px] text-zinc-500">Text<input type="color" value={selectedText.color} onChange={(event) => updateText({ color: event.target.value })} className="mt-1 h-9 w-full rounded-lg bg-black"/></label><label className="text-[10px] text-zinc-500">Background<input type="color" value={selectedText.backgroundColor} onChange={(event) => updateText({ backgroundColor: event.target.value, background: true })} className="mt-1 h-9 w-full rounded-lg bg-black"/></label><label className="text-[10px] text-zinc-500">Border<input type="color" value={selectedText.borderColor} onChange={(event) => updateText({ borderColor: event.target.value, showBorder: true })} className="mt-1 h-9 w-full rounded-lg bg-black"/></label></div><div className="mt-2 grid grid-cols-2 gap-2"><button type="button" onClick={() => updateText({ background: !selectedText.background })} className={`rounded-xl py-2 text-[10px] ${selectedText.background ? "bg-red-600" : "bg-black/30 text-zinc-500"}`}>Background</button><button type="button" onClick={() => updateText({ showBorder: !selectedText.showBorder })} className={`rounded-xl py-2 text-[10px] ${selectedText.showBorder ? "bg-red-600" : "bg-black/30 text-zinc-500"}`}>Border</button></div><Range label="Font size" value={selectedText.size} min={14} max={72} step={1} suffix="px" onChange={(size) => updateText({ size })}/><Range label="Rotation" value={selectedText.rotation} min={-180} max={180} step={1} suffix="°" onChange={(rotation) => updateText({ rotation })}/><Range label="Starts" value={selectedText.start} min={0} max={Math.max(0, selectedText.end - 0.5)} step={0.5} suffix="s" onChange={(start) => updateText({ start })}/><Range label="Ends" value={selectedText.end} min={Math.min(totalDuration, selectedText.start + 0.5)} max={Math.max(totalDuration, selectedText.start + 0.5)} step={0.5} suffix="s" onChange={(end) => updateText({ end })}/></div>}
             <label className="mt-5 block border-t border-white/7 pt-4"><span className="mb-2 flex justify-between text-xs text-zinc-500"><span>Caption</span><span>{caption.length}/500</span></span><textarea value={caption} onChange={(event) => setCaption(event.target.value.slice(0, 500))} rows={4} placeholder="Write a caption…" className="w-full resize-none rounded-2xl border border-red-950 bg-black/30 p-3 text-sm outline-none placeholder:text-zinc-700 focus:border-red-500"/></label>
+            <TopicPicker selectedTopics={selectedTopics} onChange={setSelectedTopics} max={5} />
             {totalDuration > MAX_DURATION && <p className="mt-3 rounded-xl bg-red-950/50 p-3 text-xs text-red-200">Timeline is {formatTime(totalDuration - MAX_DURATION)} too long.</p>}{error && <p className="mt-3 rounded-xl border border-red-500/20 bg-red-950/30 p-3 text-xs text-red-200">{error}</p>}
           </aside>
         </div>

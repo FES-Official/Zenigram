@@ -6,7 +6,7 @@ import { jsonError, jsonOk, normalizeString } from "@/app/lib/api";
 import { verifyS3Object } from "@/app/lib/s3Storage";
 import { createPost, getUserById, getUserRelations } from "@/app/lib/socialStore";
 import { listVisiblePosts, setContentAudience } from "@/app/lib/audienceStore";
-import { normalizeFeedPreferences, rankFeedPosts } from "@/app/lib/feedRanking";
+import { normalizeFeedPreferences, normalizeTopicId, rankFeedPosts } from "@/app/lib/feedRanking";
 
 const MAX_IMAGES_PER_POST = 10;
 const PRESENTATIONS = new Set(["single", "carousel", "grid"]);
@@ -27,6 +27,11 @@ export async function POST(req) {
     const carouselStyle = CAROUSEL_STYLES.has(body.carouselStyle) ? body.carouselStyle : "classic";
     const gridLayout = GRID_LAYOUTS.has(body.gridLayout) ? body.gridLayout : "";
     const aspectRatio = ASPECT_RATIOS.has(body.aspectRatio) ? body.aspectRatio : "square";
+    const topics = [...new Set(
+      (Array.isArray(body.topics) ? body.topics : [])
+        .map(normalizeTopicId)
+        .filter(Boolean),
+    )].slice(0, 5);
     const requestedMedia = Array.isArray(body.mediaItems) ? body.mediaItems.slice(0, MAX_IMAGES_PER_POST) : [];
     const store = await cookies();
     const cookieAudience = store.get("zenigram_post_audience")?.value === "close";
@@ -44,7 +49,7 @@ export async function POST(req) {
       return { key: item.key, url: item.url, type, provider: "s3" };
     });
 
-    const newPost = await createPost({ userId: user._id, mediaItems, caption, presentation, carouselStyle, gridLayout, aspectRatio });
+    const newPost = await createPost({ userId: user._id, mediaItems, caption, topics, presentation, carouselStyle, gridLayout, aspectRatio });
     const post = await setContentAudience("post", newPost._id, user._id, closeOnesOnly);
     store.delete("zenigram_post_audience");
 

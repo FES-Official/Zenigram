@@ -662,6 +662,7 @@ export async function createPost({
   userId,
   caption,
   mediaItems,
+  topics = [],
   presentation = "single",
   carouselStyle = "classic",
   gridLayout = "",
@@ -676,6 +677,7 @@ export async function createPost({
     userId,
     caption,
     mediaItems,
+    topics: [...new Set((Array.isArray(topics) ? topics : []).map(String).filter(Boolean))].slice(0, 5),
     presentation,
     carouselStyle,
     gridLayout,
@@ -2515,6 +2517,7 @@ export async function createClip({
   caption,
   media,
   mediaItems = [],
+  topics = [],
   timeline = [],
   textLayers = [],
   duration = 0,
@@ -2530,6 +2533,7 @@ export async function createClip({
     entityType: "clip",
     userId,
     caption,
+    topics: [...new Set((Array.isArray(topics) ? topics : []).map(String).filter(Boolean))].slice(0, 5),
     mediaUrl: firstMedia.url,
     mediaType: firstMedia.type,
     mediaPublicId: firstMedia.key,
@@ -2674,7 +2678,7 @@ function personalizeClips(clips, signals, relations, viewerId) {
   return ordered;
 }
 
-export async function listClips(viewerId, limit = 80) {
+export async function listClips(viewerId, limit = 80, providedRelations = null, options = {}) {
   const requestedLimit = Math.min(100, Math.max(1, Number(limit) || 80));
   const result = await client().send(
     new QueryCommand({
@@ -2688,9 +2692,9 @@ export async function listClips(viewerId, limit = 80) {
   );
   const clips = (result.Items || []).map(cleanItem);
   const [relations, signals] = await Promise.all([
-    viewerId && viewerId !== "guest"
+    providedRelations || (viewerId && viewerId !== "guest"
       ? await getUserRelations(viewerId)
-      : { blockedUsers: [], blockedByUsers: [], supporting: [], savedClips: [] },
+      : { blockedUsers: [], blockedByUsers: [], supporting: [], savedClips: [] }),
     listClipSignals(viewerId),
   ]);
   const excludedUsers = new Set([
@@ -2715,7 +2719,9 @@ export async function listClips(viewerId, limit = 80) {
         (relations.supporting || []).includes(clip.userId))
     );
   });
-  const ranked = personalizeClips(eligibleClips, signals, relations, viewerId).slice(0, requestedLimit);
+  const ranked = options.preserveCandidatePool
+    ? eligibleClips.slice(0, requestedLimit)
+    : personalizeClips(eligibleClips, signals, relations, viewerId).slice(0, requestedLimit);
   const signalMap = new Map(signals.map((signal) => [String(signal.clipId), signal]));
   return Promise.all(
     ranked.map(async (clip) => {

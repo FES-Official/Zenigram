@@ -54,9 +54,11 @@ The app is configured to run on port `7860`.
 The browser asks `/api/media/upload` for a short-lived signed request, uploads
 the file directly to S3, and sends only the resulting object key to the post or
 clip API. Next.js checks the object with `HeadObject` before writing metadata.
-Images and small videos use a signed `PutObject`; videos at least 25 MB use
-multipart upload with 10 MB parts, three concurrent workers, and three retries
-per failed part. A failed upload is aborted and the bucket lifecycle rule also
+Images and small videos use a signed `PutObject`; videos at least 10 MB use
+multipart upload with 10 MB parts, up to five concurrent part workers, and
+three retries per failed part. The clip editor uploads multiple files in
+parallel (up to two large-video uploads or four lightweight assets), reports
+byte-weighted progress, and preserves the original timeline order. A failed upload is aborted and the bucket lifecycle rule also
 removes incomplete multipart uploads after one day.
 
 All application data—including users, posts, clips, stories, story events,
@@ -80,10 +82,10 @@ cleanup lifecycle rule.
 
 ## User-controlled feed
 
-Zenigram's home feed includes a Feed Control Center. Users can choose Balanced, Your circle, Latest, My interests, or Discover; adjust topic preferences and source weights; and save those rules to their DynamoDB profile. Each post also offers "Why am I seeing this?" and controls for showing more or less of a topic, muting a topic, changing a creator's influence, or hiding a creator from the feed.
+Zenigram's home feed includes a Feed Control Center. Users can choose Balanced, Your circle, Latest, My interests, or Discover; adjust topic preferences and source weights; and save those rules to their DynamoDB profile. Posts and clips offer a "Why am I seeing this?" explanation plus controls to show more or less of a topic, mute a topic, change a creator's influence, or hide a creator from the feed.
 
 Feed preferences are served by `/api/feed-preferences` and applied to visible post candidates by `src/app/lib/feedRanking.js`. Visibility and account/privacy filters run before personalized ranking. "Latest" is chronological. Other modes use transparent, deterministic weights for selected interests, circle relationships, freshness, discovery, engagement, and optional creator adjustments.
 
-Topic labels are currently inferred from captions and hashtags with a lightweight keyword map. This is a first version, not a machine-learning classifier; ambiguous captions may be categorized imperfectly. A future improvement is allowing creators to tag posts explicitly and adding cursor-based feed pagination.
+Creators can now explicitly select up to five topics when publishing a post or clip. Those tags take precedence as feed signals, with caption and hashtag inference retained for older or untagged content. The same saved user rules apply to posts and clips; clip candidates are ranked after visibility/privacy filtering so the previous clip-personalization sort does not override the user's selected feed mode. Topic inference for untagged content remains a lightweight keyword map, not a machine-learning classifier, so ambiguous captions may still be categorized imperfectly.
 
 <!-- CI verification trigger: story location picker fix -->

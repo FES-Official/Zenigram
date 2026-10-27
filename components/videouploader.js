@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { uploadMediaDirect } from "@/app/lib/directS3Upload";
+import TopicPicker from "./TopicPicker";
 
 const FILTERS = [
   { name: "Normal", value: "" },
@@ -32,6 +33,7 @@ export default function VideoEditor({ onSave, file: initialFile }) {
   const [videoPreview, setVideoPreview] = useState(null);
   const [filter, setFilter] = useState("");
   const [caption, setCaption] = useState("");
+  const [selectedTopics, setSelectedTopics] = useState([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
@@ -90,6 +92,7 @@ export default function VideoEditor({ onSave, file: initialFile }) {
     previewUrlRef.current = null;
     setVideoPreview(null);
     setCaption("");
+    setSelectedTopics([]);
     setFilter("");
     setBrightness(1);
     setContrast(1);
@@ -125,6 +128,7 @@ export default function VideoEditor({ onSave, file: initialFile }) {
         },
         body: JSON.stringify({
           caption: caption.trim(),
+          topics: selectedTopics,
           mediaItems: [{ key: uploaded.key, type: "video" }],
         }),
       });
@@ -175,11 +179,12 @@ export default function VideoEditor({ onSave, file: initialFile }) {
 
               <textarea
                 value={caption}
-                onChange={(event) => setCaption(event.target.value)}
+                onChange={(event) => setCaption(event.target.value.slice(0, 2200))}
                 placeholder="Write your caption..."
                 className="w-full rounded-lg border border-red-800 bg-black p-3 text-sm"
                 maxLength={2200}
               />
+              <TopicPicker selectedTopics={selectedTopics} onChange={setSelectedTopics} max={5} />
 
               {loading && (
                 <div className="w-full space-y-2">

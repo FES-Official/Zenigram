@@ -4,6 +4,7 @@ import { authOptions } from "@/app/lib/auth";
 import { verifyS3Object } from "@/app/lib/s3Storage";
 import { createClip, getUserById, getUserRelations, listClips } from "@/app/lib/socialStore";
 import { filterVisibleClips, setContentAudience } from "@/app/lib/audienceStore";
+import { normalizeFeedPreferences, normalizeTopicId, rankFeedPosts } from "@/app/lib/feedRanking";
 
 function jsonError(message, status = 400) { return Response.json({ success: false, message }, { status }); }
 
@@ -21,11 +22,41 @@ function normalizeTimeline(items, mediaCount) {
 export async function GET(req) {
   try {
     const session = await getServerSession(authOptions);
-    const rawLimit = Number(new URL(req.url).searchParams.get("limit"));
+    const limitValue = new URL(req.url).searchParams.get("limit");
+    const rawLimit = limitValue === null ? 80 : Number(limitValue);
     const limit = Number.isSafeInteger(rawLimit) ? Math.min(80, Math.max(1, rawLimit)) : 80;
-    const clips = await listClips(session?.user?.id || "guest", limit);
-    const relations = session?.user?.id ? await getUserRelations(session.user.id) : { blockedUsers: [], blockedByUsers: [], supporting: [], closeOnes: [] };
-    return Response.json({ success: true, clips: filterVisibleClips(clips, session?.user?.id || "guest", relations) });
+    const viewerId = session?.user?.id ? String(session.user.id) : "guest";
+    const guestRelations = {
+      blockedUsers: [],
+      blockedByUsers: [],
+      supporting: [],
+      supportingCount: 0,
+      closeOnes: [],
+      savedClips: [],
+    };
+
+    const [user, relations] = session?.user?.id
+      ? await Promise.all([
+          getUserById(viewerId),
+          getUserRelations(viewerId),
+        ])
+      : [null, guestRelations];
+
+    // Load a wider candidate set before applying the user's own clip rules.
+    const candidates = await listClips(viewerId, 80, relations, { preserveCandidatePool: true });
+    const visible = filterVisibleClips(candidates, viewerId, relations);
+    const preferences = normalizeFeedPreferences(user?.feedPreferences);
+    const clips = rankFeedPosts(
+      visible,
+      preferences,
+      { ...relations, viewerId },
+    ).slice(0, limit);
+
+    return Response.json({
+      success: true,
+      clips,
+      feedPreferences: preferences,
+    });
   } catch (error) {
     console.error("Clips fetch error:", error);
     return jsonError("Failed to load clips", 500);
@@ -38,6 +69,11 @@ export async function POST(req) {
     if (!session?.user?.id) return jsonError("Unauthorized", 401);
     const body = await req.json();
     const caption = String(body.caption || "").trim().slice(0, 500);
+    const topics = [...new Set(
+      (Array.isArray(body.topics) ? body.topics : [])
+        .map(normalizeTopicId)
+        .filter(Boolean),
+    )].slice(0, 5);
     const requestedItems = Array.isArray(body.mediaItems) ? body.mediaItems.slice(0, 20) : body.media ? [body.media] : [];
     const store = await cookies();
     const cookieAudience = store.get("zenigram_clip_audience")?.value === "close";
@@ -69,7 +105,7 @@ export async function POST(req) {
     })).filter((layer) => layer.text && Number.isFinite(layer.start) && Number.isFinite(layer.end) && layer.start < duration && layer.end > layer.start);
 
     const clip = await createClip({
-      userId: user._id, caption, media: mediaItems[0], mediaItems, timeline, textLayers, duration,
+      userId: user._id, caption, media: mediaItems[0], mediaItems, topics, timeline, textLayers, duration,
       transition: ["cut", "fade", "slide", "zoom"].includes(body.transition) ? body.transition : "fade", aspectRatio: "9:16",
     });
     const updated = await setContentAudience("clip", clip._id, user._id, closeOnesOnly);
