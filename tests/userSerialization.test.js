@@ -40,6 +40,13 @@ test("public user objects omit contact details and account internals", () => {
     lastLogin: "2026-10-27T00:00:00.000Z",
     feedPreferences: { mode: "latest" },
     password: "$2b$private-hash",
+    progression: {
+      currentPower: 10,
+      totalPower: 50,
+      lastHoursPoints: 12,
+      lastHoursClaimedAt: "private-timestamp",
+      internalFlag: true,
+    },
   };
 
   const output = sanitizePublicUserRecord(input);
@@ -48,6 +55,11 @@ test("public user objects omit contact details and account internals", () => {
     username: "public-user",
     fullname: "Public User",
     profilePic: "https://cdn.example.test/avatar.jpg",
+    progression: {
+      currentPower: 10,
+      totalPower: 50,
+      lastHoursPoints: 12,
+    },
   });
   assert.equal(input.email, "private@example.test", "the source record should not be mutated");
 });
