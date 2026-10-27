@@ -6,6 +6,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { sanitizePublicUserRecord } from "@/app/lib/userSerialization";
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -42,6 +43,9 @@ export function getPublicS3Url(key) {
 }
 
 const signedUrlCache = new Map();
+const MAX_SIGNED_URL_CACHE_ENTRIES = 5000;
+let cachedS3Client = null;
+let cachedS3ClientConfigKey = "";
 
 export function getS3KeyFromUrl(value, allowRawKey = false) {
   const config = getS3Config();
@@ -83,27 +87,39 @@ export async function getReadableMediaUrl(value, key = "") {
   const objectKey = normalizeString(key) || getS3KeyFromUrl(value);
   if (!objectKey) return normalizeString(value);
 
+  const now = Date.now();
   const cached = signedUrlCache.get(objectKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  if (cached && cached.expiresAt > now) {
+    // Refresh insertion order so frequently used URLs remain in the bounded cache.
+    signedUrlCache.delete(objectKey);
+    signedUrlCache.set(objectKey, cached);
+    return cached.url;
+  }
+  if (cached) signedUrlCache.delete(objectKey);
 
   const url = await getSignedUrl(
     getS3Client(),
     new GetObjectCommand({ Bucket: config.bucket, Key: objectKey }),
     { expiresIn: 3600 },
   );
+  if (signedUrlCache.size >= MAX_SIGNED_URL_CACHE_ENTRIES) {
+    const oldestKey = signedUrlCache.keys().next().value;
+    if (oldestKey) signedUrlCache.delete(oldestKey);
+  }
   signedUrlCache.set(objectKey, {
     url,
-    expiresAt: Date.now() + 50 * 60 * 1000,
+    expiresAt: now + 50 * 60 * 1000,
   });
   return url;
 }
 
-export async function hydrateUserMedia(user) {
+export async function hydrateUserMedia(user, { includePrivateFields = false } = {}) {
   if (!user) return user;
-  return {
+  const hydrated = {
     ...user,
     profilePic: await getReadableMediaUrl(user.profilePic, user.profilePicKey),
   };
+  return includePrivateFields ? hydrated : sanitizePublicUserRecord(hydrated);
 }
 
 export async function hydrateMediaItem(item) {
@@ -188,13 +204,27 @@ export async function deleteS3Prefix(prefix) {
 export function getS3Client() {
   const config = getS3Config();
   if (!config) throw new Error("AWS media storage is not configured");
-  return new S3Client({
+
+  // Environment credentials are static for the life of this process; avoid
+  // copying the secret access key into a separate cache-key string.
+  const configKey = JSON.stringify([
+    config.region,
+    config.bucket,
+    config.accessKeyId,
+  ]);
+  if (cachedS3Client && cachedS3ClientConfigKey === configKey) {
+    return cachedS3Client;
+  }
+
+  cachedS3Client = new S3Client({
     region: config.region,
     credentials: {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
     },
   });
+  cachedS3ClientConfigKey = configKey;
+  return cachedS3Client;
 }
 
 export function isOwnedMediaKey(key, userId) {

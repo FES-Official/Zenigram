@@ -81,6 +81,6 @@ export async function GET() {
     return NextResponse.json({ post, feedPreferences: preferences }, { status: 200 });
   } catch (err) {
     console.error("Posts fetch error:", err);
-    return NextResponse.json({ error: "Database connection failed", message: err.message }, { status: 500 });
+    return NextResponse.json({ error: "Database connection failed" }, { status: 500 });
   }
 }

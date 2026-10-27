@@ -35,12 +35,22 @@ function mediaFolder(contentType) {
   return "audio";
 }
 
+function invalidUploadRequest(message) {
+  const error = new Error(message);
+  error.status = 400;
+  return error;
+}
+
 function validateNewUpload(body) {
   const fileName = sanitizeFileName(body.fileName);
   const contentType = normalizeString(body.contentType);
   const size = Number(body.size);
-  if (!fileName || !ALLOWED_MEDIA_TYPES.has(contentType)) throw new Error("Unsupported media type");
-  if (!Number.isSafeInteger(size) || size < 1 || size > MAX_FILE_SIZE) throw new Error("Invalid media size");
+  if (!fileName || !ALLOWED_MEDIA_TYPES.has(contentType)) {
+    throw invalidUploadRequest("Unsupported media type");
+  }
+  if (!Number.isSafeInteger(size) || size < 1 || size > MAX_FILE_SIZE) {
+    throw invalidUploadRequest("Invalid media size");
+  }
   return { fileName, contentType, size };
 }
 
@@ -68,7 +78,15 @@ export async function POST(req) {
     const config = getS3Config();
     if (!config) return jsonError("AWS media storage is not configured", 503);
 
-    const body = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return jsonError("Invalid JSON request body", 400);
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return jsonError("Invalid request body", 400);
+    }
     const action = normalizeString(body.action);
     const s3 = getS3Client();
 
@@ -132,6 +150,8 @@ export async function POST(req) {
     return jsonError("Invalid upload action", 400);
   } catch (error) {
     console.error("Direct S3 upload error:", error);
-    return jsonError(error.message || "Unable to prepare upload", 500);
+    const status = error?.status === 400 ? 400 : 500;
+    const message = status === 400 ? error.message : "Unable to prepare upload";
+    return jsonError(message, status);
   }
 }

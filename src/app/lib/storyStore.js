@@ -17,6 +17,7 @@ import {
   updateUser,
 } from "@/app/lib/socialStore";
 import { getReadableMediaUrl, hydrateUserMedia } from "@/app/lib/s3Storage";
+import { sanitizePublicUserRecord } from "@/app/lib/userSerialization";
 import {
   achievementIdsForViews,
   EXPLORATION_ACHIEVEMENTS,
@@ -135,7 +136,7 @@ async function hydrateStory(story, viewerId) {
   const viewers = await getUsersByIds(viewerIds);
   return {
     ...story,
-    userId: user,
+    userId: sanitizePublicUserRecord(user),
     event,
     mission,
     mediaUrl: await getReadableMediaUrl(story.mediaUrl, story.mediaKey),
@@ -527,7 +528,7 @@ export async function listStoryComments(storyId, viewerId = "", limit = 100) {
   }));
   return Promise.all((result.Items || []).map(async (item) => ({
     ...clean(item),
-    user: await getUserById(item.userId),
+    user: sanitizePublicUserRecord(await getUserById(item.userId)),
     viewerLiked: Boolean(viewerId && (item.likes || []).includes(viewerId)),
   })));
 }
@@ -546,7 +547,7 @@ export async function addStoryComment(storyId, userId, text, parentId = null) {
     { Update: { TableName: table(), Key: { PK: `STORY#${storyId}`, SK: "META" }, UpdateExpression: "ADD commentsCount :one", ExpressionAttributeValues: { ":one": 1 }, ConditionExpression: "attribute_exists(PK)" } },
   ] }));
   if (story.userId !== userId) await createNotification({ recipient: story.userId, sender: userId, type: "story_comment", story: storyId, status: "approved" });
-  return { ...comment, user };
+  return { ...comment, user: sanitizePublicUserRecord(user) };
 }
 
 export async function toggleStoryCommentLike(storyId, commentId, userId) {
@@ -599,7 +600,7 @@ export async function listInvitations(userId) {
   return Promise.all((result.Items || []).map(async (item) => ({
     ...clean(item),
     event: await getEvent(item.eventId),
-    sender: await getUserById(item.senderId),
+    sender: sanitizePublicUserRecord(await getUserById(item.senderId)),
   })));
 }
 
