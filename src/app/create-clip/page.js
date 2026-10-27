@@ -236,7 +236,7 @@ export default function CreateClipPage() {
           try {
             const uploaded = await uploadMediaDirect(items[index].file, {
               onProgress: (value) => {
-                const percent = value <= 1 ? value * 100 : value;
+                const percent = Number(value) || 0;
                 progressByItem[index] = Math.max(
                   progressByItem[index],
                   Math.min(100, Math.max(0, percent)),
