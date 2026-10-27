@@ -205,11 +205,12 @@ export function getS3Client() {
   const config = getS3Config();
   if (!config) throw new Error("AWS media storage is not configured");
 
+  // Environment credentials are static for the life of this process; avoid
+  // copying the secret access key into a separate cache-key string.
   const configKey = JSON.stringify([
     config.region,
     config.bucket,
     config.accessKeyId,
-    config.secretAccessKey,
   ]);
   if (cachedS3Client && cachedS3ClientConfigKey === configKey) {
     return cachedS3Client;
