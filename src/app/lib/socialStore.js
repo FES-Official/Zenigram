@@ -2678,7 +2678,7 @@ function personalizeClips(clips, signals, relations, viewerId) {
   return ordered;
 }
 
-export async function listClips(viewerId, limit = 80, providedRelations = null) {
+export async function listClips(viewerId, limit = 80, providedRelations = null, options = {}) {
   const requestedLimit = Math.min(100, Math.max(1, Number(limit) || 80));
   const result = await client().send(
     new QueryCommand({
@@ -2695,7 +2695,7 @@ export async function listClips(viewerId, limit = 80, providedRelations = null) 
     providedRelations || (viewerId && viewerId !== "guest"
       ? await getUserRelations(viewerId)
       : { blockedUsers: [], blockedByUsers: [], supporting: [], savedClips: [] }),
-    listClipSignals(viewerId),
+    options.preserveCandidatePool ? Promise.resolve([]) : listClipSignals(viewerId),
   ]);
   const excludedUsers = new Set([
     ...(relations.blockedUsers || []),
@@ -2719,7 +2719,9 @@ export async function listClips(viewerId, limit = 80, providedRelations = null) 
         (relations.supporting || []).includes(clip.userId))
     );
   });
-  const ranked = personalizeClips(eligibleClips, signals, relations, viewerId).slice(0, requestedLimit);
+  const ranked = options.preserveCandidatePool
+    ? eligibleClips.slice(0, requestedLimit)
+    : personalizeClips(eligibleClips, signals, relations, viewerId).slice(0, requestedLimit);
   const signalMap = new Map(signals.map((signal) => [String(signal.clipId), signal]));
   return Promise.all(
     ranked.map(async (clip) => {
