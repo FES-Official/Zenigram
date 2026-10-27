@@ -56,7 +56,7 @@ function clipPk(clipId) {
   return `CLIP#${clipId}`;
 }
 
-function cleanItem(item) {
+function cleanItem(item, { includePassword = false } = {}) {
   if (!item) return null;
   const value = { ...item };
   delete value.PK;
@@ -65,7 +65,20 @@ function cleanItem(item) {
   delete value.GSI1SK;
   delete value.GSI2PK;
   delete value.GSI2SK;
+  if (!includePassword) delete value.password;
   return value;
+}
+
+const MAX_BATCH_UNPROCESSED_RETRIES = 6;
+
+async function waitForBatchRetry(attempt, operation) {
+  if (attempt >= MAX_BATCH_UNPROCESSED_RETRIES) {
+    throw new Error(`DynamoDB ${operation} exceeded the retry limit`);
+  }
+
+  const delayMs = Math.min(1000, 50 * 2 ** attempt) + Math.floor(Math.random() * 50);
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+  return attempt + 1;
 }
 
 async function batchGet(keys) {
@@ -73,12 +86,14 @@ async function batchGet(keys) {
   const output = [];
   for (let index = 0; index < keys.length; index += 100) {
     let request = keys.slice(index, index + 100);
+    let attempt = 0;
     do {
       const result = await client().send(
         new BatchGetCommand({ RequestItems: { [table()]: { Keys: request } } }),
       );
       output.push(...(result.Responses?.[table()] || []));
       request = result.UnprocessedKeys?.[table()]?.Keys || [];
+      if (request.length) attempt = await waitForBatchRetry(attempt, "batch get");
     } while (request.length);
   }
   return output;
@@ -89,11 +104,13 @@ async function batchPut(items) {
     let requests = items.slice(index, index + 25).map((Item) => ({
       PutRequest: { Item },
     }));
+    let attempt = 0;
     do {
       const result = await client().send(
         new BatchWriteCommand({ RequestItems: { [table()]: requests } }),
       );
       requests = result.UnprocessedItems?.[table()] || [];
+      if (requests.length) attempt = await waitForBatchRetry(attempt, "batch write");
     } while (requests.length);
   }
 }
@@ -103,11 +120,13 @@ async function batchDelete(keys) {
     let requests = keys.slice(index, index + 25).map((Key) => ({
       DeleteRequest: { Key },
     }));
+    let attempt = 0;
     do {
       const result = await client().send(
         new BatchWriteCommand({ RequestItems: { [table()]: requests } }),
       );
       requests = result.UnprocessedItems?.[table()] || [];
+      if (requests.length) attempt = await waitForBatchRetry(attempt, "batch delete");
     } while (requests.length);
   }
 }
@@ -159,11 +178,12 @@ async function getRawUserById(userId) {
       ConsistentRead: true,
     }),
   );
-  return cleanItem(result.Item);
+  return cleanItem(result.Item, { includePassword: true });
 }
 
 export async function getUserById(userId) {
-  return hydrateUserMedia(await getRawUserById(userId));
+  const user = await getRawUserById(userId);
+  return hydrateUserMedia(cleanItem(user));
 }
 
 export async function getUsersByIds(userIds = []) {
@@ -179,7 +199,7 @@ export async function getUsersByIds(userIds = []) {
   return ids.map((id) => map.get(id)).filter(Boolean);
 }
 
-async function getLookup(kind, value) {
+async function getLookup(kind, value, { includePassword = false } = {}) {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return null;
   const result = await client().send(
@@ -189,7 +209,10 @@ async function getLookup(kind, value) {
       ConsistentRead: true,
     }),
   );
-  return result.Item?.userId ? getUserById(result.Item.userId) : null;
+  if (!result.Item?.userId) return null;
+  return includePassword
+    ? getRawUserById(result.Item.userId)
+    : getUserById(result.Item.userId);
 }
 
 export function getUserByEmail(email) {
@@ -200,10 +223,12 @@ export function getUserByUsername(username) {
   return getLookup("USERNAME", username);
 }
 
+// Credentials authentication is the only path that needs the password hash.
+// Other lookup functions deliberately return password-free user records.
 export async function getUserByIdentifier(identifier) {
   return String(identifier || "").includes("@")
-    ? getUserByEmail(identifier)
-    : getUserByUsername(identifier);
+    ? getLookup("EMAIL", identifier, { includePassword: true })
+    : getLookup("USERNAME", identifier, { includePassword: true });
 }
 
 export async function createUser(input) {
@@ -268,7 +293,7 @@ export async function createUser(input) {
       ],
     }),
   );
-  return user;
+  return cleanItem(user);
 }
 
 export async function updateUser(userId, updates) {
@@ -310,7 +335,7 @@ export async function updateUser(userId, updates) {
     },
   });
   await client().send(new TransactWriteCommand({ TransactItems: transactions }));
-  return next;
+  return cleanItem(next);
 }
 
 export async function deleteAccountPermanently(userId) {
