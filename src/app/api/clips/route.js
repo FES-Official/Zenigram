@@ -42,7 +42,7 @@ export async function GET(req) {
       : [null, guestRelations];
 
     // Load a wider candidate set before applying the user's own clip rules.
-    const candidates = await listClips(viewerId, 80, relations);
+    const candidates = await listClips(viewerId, 80, relations, { preserveCandidatePool: true });
     const visible = filterVisibleClips(candidates, viewerId, relations);
     const preferences = normalizeFeedPreferences(user?.feedPreferences);
     const clips = rankFeedPosts(
