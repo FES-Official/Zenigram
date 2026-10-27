@@ -158,7 +158,7 @@ function buildScore(post, preferences, relations, topics, now) {
   const engagement = (
     Math.log1p(safeCount(post.likesCount ?? post.likes?.length)) * 8 +
     Math.log1p(safeCount(post.commentsCount ?? post.comments?.length)) * 10 +
-    Math.log1p(safeCount(post.shareCount)) * 12
+    Math.log1p(safeCount(post.shareCount ?? post.shares)) * 12
   );
   const trendingScore = clamp(engagement);
   const circleScore = isCircle ? 100 : 15;
