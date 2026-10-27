@@ -82,7 +82,7 @@ cleanup lifecycle rule.
 
 ## User-controlled feed
 
-Zenigram's home feed includes a Feed Control Center. Users can choose Balanced, Your circle, Latest, My interests, or Discover; adjust topic preferences and source weights; and save those rules to their DynamoDB profile. Each post also offers "Why am I seeing this?" and controls for showing more or less of a topic, muting a topic, changing a creator's influence, or hiding a creator from the feed.
+Zenigram's home feed includes a Feed Control Center. Users can choose Balanced, Your circle, Latest, My interests, or Discover; adjust topic preferences and source weights; and save those rules to their DynamoDB profile. Posts and clips offer a "Why am I seeing this?" explanation plus controls to show more or less of a topic, mute a topic, change a creator's influence, or hide a creator from the feed.
 
 Feed preferences are served by `/api/feed-preferences` and applied to visible post candidates by `src/app/lib/feedRanking.js`. Visibility and account/privacy filters run before personalized ranking. "Latest" is chronological. Other modes use transparent, deterministic weights for selected interests, circle relationships, freshness, discovery, engagement, and optional creator adjustments.
 
