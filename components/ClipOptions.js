@@ -21,7 +21,8 @@ export default function ClipOptions({
   const topicId = Array.isArray(clip?.feedTopics) ? clip.feedTopics[0] : null;
   const topicLabel = FEED_TOPICS.find((topic) => topic.id === topicId)?.label || topicId;
   const creatorId = String(clip?.userId || clip?.user?._id || "");
-  const canAdjustCreator = Boolean(creatorId && creatorId !== String(currentUserId || ""));
+  const canCustomizeFeed = Boolean(currentUserId);
+  const canAdjustCreator = Boolean(canCustomizeFeed && creatorId && creatorId !== String(currentUserId));
 
   return (
     <AnimatePresence>
@@ -65,7 +66,11 @@ export default function ClipOptions({
               )}
             </div>
 
-            {topicId ? (
+            {!canCustomizeFeed ? (
+              <p className="mx-3 mb-2 rounded-xl bg-black/20 p-3 text-[11px] leading-5 text-zinc-500">
+                Sign in to save feed rules that apply to both clips and posts.
+              </p>
+            ) : topicId ? (
               <div className="px-2 pb-2">
                 <p className="px-2 pb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                   {topicLabel}
