@@ -2407,7 +2407,7 @@ export async function updateMessage(messageId, userId, updater) {
     updatedAt: now(),
   };
   await client().send(new PutCommand({ TableName: table(), Item: updated }));
-  const sender = await getUserById(updated.sender);
+  const sender = sanitizePublicUserRecord(await getUserById(updated.sender));
   return {
     conversation: owned.conversation,
     message: await hydrateMessageMedia({ ...cleanItem(updated), sender }),
