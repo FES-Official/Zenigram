@@ -1,5 +1,5 @@
 import { randomBytes } from "crypto";
-import { sanitizeUserRecord } from "@/app/lib/userSerialization";
+import { sanitizePublicUserRecord, sanitizeUserRecord } from "@/app/lib/userSerialization";
 import {
   BatchGetCommand,
   BatchWriteCommand,
@@ -183,7 +183,7 @@ async function getRawUserById(userId) {
 
 export async function getUserById(userId) {
   const user = await getRawUserById(userId);
-  return hydrateUserMedia(cleanItem(user));
+  return hydrateUserMedia(cleanItem(user), { includePrivateFields: true });
 }
 
 export async function getUsersByIds(userIds = []) {
@@ -2139,7 +2139,7 @@ export async function createMessage(input) {
       ),
     ),
   ]);
-  const sender = await getUserById(input.senderId);
+  const sender = sanitizePublicUserRecord(await getUserById(input.senderId));
   return hydrateMessageMedia({ ...message, sender });
 }
 
@@ -2590,7 +2590,7 @@ export async function createClip({
   );
   return {
     ...(await hydrateClipMedia(clip)),
-    user: await getUserById(userId),
+    user: sanitizePublicUserRecord(await getUserById(userId)),
   };
 }
 
@@ -2897,7 +2897,7 @@ export async function addClipComment(clipId, userId, text, parentId = null) {
       clip: clipId,
     });
   }
-  return { ...comment, user };
+  return { ...comment, user: sanitizePublicUserRecord(user) };
 }
 
 export async function toggleClipCommentLike(clipId, commentId, userId) {
