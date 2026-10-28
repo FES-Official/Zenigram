@@ -5,6 +5,7 @@ import { getStory } from "@/app/lib/storyStore";
 import {
   getS3Client,
   getS3Config,
+  getS3KeyFromUrl,
 } from "@/app/lib/s3Storage";
 import { getUserById, getUserRelations } from "@/app/lib/socialStore";
 
@@ -69,7 +70,12 @@ export async function GET(req) {
     }
 
     const config = getS3Config();
-    const key = owner.profilePicKey || "";
+    // Public-user serialization deliberately omits private S3 keys. Recover
+    // the key from the already-hydrated signed URL when necessary.
+    const key =
+      owner.profilePicKey ||
+      getS3KeyFromUrl(owner.profilePic) ||
+      "";
 
     if (!config || !isObjectKey(key)) {
       return new Response("Profile image not available", { status: 404 });
