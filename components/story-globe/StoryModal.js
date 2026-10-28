@@ -234,6 +234,11 @@ export default function StoryModal({
 
   const story = stories[storyIndex];
 
+  // Stream media through Zenigram rather than relying on expiring S3 URLs.
+  const storyMediaUrl = story?._id
+    ? `/api/story-globe/story-media?storyId=${encodeURIComponent(story._id)}`
+    : story?.mediaUrl || "";
+
   const username = getUserName(story?.userId);
 
   const duration = getDurationMs(story);
@@ -1774,7 +1779,7 @@ export default function StoryModal({
               <video
                 ref={videoRef}
                 key={story._id}
-                src={story.mediaUrl}
+                src={storyMediaUrl}
                 autoPlay
                 muted
                 playsInline
@@ -1786,19 +1791,14 @@ export default function StoryModal({
                 className="h-full w-full object-contain"
               />
             ) : (
-              <Image
+              <img
                 key={story._id}
-                src={story.mediaUrl}
-                alt=""
-                fill
-                priority
-                unoptimized
-                onError={() =>
-                  setMediaError(
-                    true
-                  )
-                }
-                className="object-contain"
+                src={storyMediaUrl}
+                alt={story.caption || "Story media"}
+                loading="eager"
+                decoding="async"
+                onError={() => setMediaError(true)}
+                className="absolute inset-0 h-full w-full object-contain"
               />
             )}
 
