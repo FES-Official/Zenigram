@@ -92,11 +92,13 @@ export async function GET(req) {
       return new Response("Media storage is unavailable", { status: 503 });
     }
 
-    const key =
-      story.mediaKey ||
-      getS3KeyFromUrl(story.mediaUrl, true);
+    // Try stored key first, then derive it from older S3 URL formats.
+    const key = [
+      story.mediaKey,
+      getS3KeyFromUrl(story.mediaUrl, true),
+    ].find(isAllowedStoryKey);
 
-    if (!isAllowedStoryKey(key)) {
+    if (!key) {
       return new Response("Story media not found", { status: 404 });
     }
 
