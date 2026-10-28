@@ -255,6 +255,7 @@ export default function StoryGlobe() {
   const router = useRouter();
 
   const [mapsReady, setMapsReady] = useState(false);
+  const [maps3dLibrary, setMaps3dLibrary] = useState(null);
   const [mapError, setMapError] = useState("");
 
   const [tab, setTab] = useState("all");
@@ -445,6 +446,10 @@ export default function StoryGlobe() {
 
           mapContainerRef.current.appendChild(map);
           mapRef.current = map;
+          // Pass the imported library directly to marker components. The library
+          // object is guaranteed to exist here; relying on a global namespace
+          // can silently skip every marker on some Maps JS API builds.
+          setMaps3dLibrary(maps3d);
           setMapsReady(true);
         });
       })
@@ -589,6 +594,10 @@ export default function StoryGlobe() {
       setSearching(false);
     }
   }, [searchQuery]);
+
+  const handleGroupClick = useCallback((group) => {
+    if (group?.id) setSelectedGroupId(group.id);
+  }, []);
 
   const updateStory = useCallback((storyId, updates) => {
     setStories((current) =>
@@ -791,8 +800,9 @@ export default function StoryGlobe() {
           <StoryMarker
             key={group.id}
             map={mapRef.current}
+            maps3d={maps3dLibrary}
             group={group}
-            onClick={(value) => setSelectedGroupId(value.id)}
+            onClick={handleGroupClick}
           />
         ))}
 
