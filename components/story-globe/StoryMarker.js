@@ -12,7 +12,7 @@ function createPin(story, storyCount, PinElement) {
     borderColor: "#a5f3fc",
     glyphColor: "#ffffff",
     glyphSrc: new URL(profileImageUrl, window.location.origin),
-    scale: 1.25,
+    scale: 1.5,
   });
 
   pin.title = story?.userId?.username
@@ -22,53 +22,67 @@ function createPin(story, storyCount, PinElement) {
   return pin;
 }
 
-export default function StoryMarker({ map, group, onClick }) {
+export default function StoryMarker({ map, maps3d, group, onClick }) {
   useEffect(() => {
     let cancelled = false;
     let marker;
     let handleClick;
 
     const createMarker = async () => {
-      const maps3d = window.google?.maps?.maps3d;
-      if (!map || !maps3d?.Marker3DInteractiveElement) return;
+      // Use the library instance passed by Globe.js rather than assuming
+      // importLibrary always exposes the same global namespace.
+      const Marker3DInteractiveElement =
+        maps3d?.Marker3DInteractiveElement;
+      if (!map || !Marker3DInteractiveElement) return;
 
-      const { Marker3DInteractiveElement } = maps3d;
-      const { PinElement } =
-        (await window.google.maps.importLibrary("marker")) || {};
+      const story = group?.stories?.[0];
+      const lat = Number(group?.latitude);
+      const lng = Number(group?.longitude);
 
       if (
-        cancelled ||
-        !PinElement ||
-        !group?.stories?.[0] ||
-        !Number.isFinite(Number(group.latitude)) ||
-        !Number.isFinite(Number(group.longitude))
+        !story?._id ||
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng) ||
+        lat < -90 ||
+        lat > 90 ||
+        lng < -180 ||
+        lng > 180
       ) {
         return;
       }
 
-      const story = group.stories[0];
+      const markerLibrary = await window.google.maps.importLibrary("marker");
+      if (cancelled) return;
+
+      const PinElement = markerLibrary?.PinElement;
 
       marker = new Marker3DInteractiveElement({
-        position: {
-          lat: Number(group.latitude),
-          lng: Number(group.longitude),
-          altitude: 0,
-        },
+        position: { lat, lng, altitude: 0 },
         altitudeMode: "CLAMP_TO_GROUND",
         title: `${group.stories.length} Zenigram ${group.stories.length === 1 ? "story" : "stories"}`,
         drawsWhenOccluded: true,
         sizePreserved: true,
+        collisionBehavior: "REQUIRED",
         zIndex: 1000,
       });
 
-      marker.append(createPin(story, group.stories.length, PinElement));
+      if (PinElement) {
+        marker.append(createPin(story, group.stories.length, PinElement));
+      } else {
+        // Keep a visible clickable marker even if the marker library fails.
+        marker.label = String(group.stories.length);
+      }
 
-      handleClick = () => onClick(group);
+      handleClick = () => onClick?.(group);
       marker.addEventListener("gmp-click", handleClick);
       map.append(marker);
     };
 
-    void createMarker();
+    createMarker().catch((error) => {
+      if (!cancelled) {
+        console.error("Unable to create Stories Globe marker:", error);
+      }
+    });
 
     return () => {
       cancelled = true;
@@ -77,7 +91,7 @@ export default function StoryMarker({ map, group, onClick }) {
       }
       marker?.remove();
     };
-  }, [map, group, onClick]);
+  }, [map, maps3d, group, onClick]);
 
   return null;
 }
