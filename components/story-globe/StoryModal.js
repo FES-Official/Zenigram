@@ -216,6 +216,9 @@ export default function StoryModal({
   const [mediaError, setMediaError] =
     useState(false);
 
+  const [mediaFallbackTried, setMediaFallbackTried] =
+    useState(false);
+
   const tapTimerRef = useRef(null);
 
   const likeTimerRef = useRef(null);
@@ -238,6 +241,26 @@ export default function StoryModal({
   const storyMediaUrl = story?._id
     ? `/api/story-globe/story-media?storyId=${encodeURIComponent(story._id)}`
     : story?.mediaUrl || "";
+
+  const handleMediaError = useCallback((event) => {
+    const fallbackUrl = story?.mediaUrl;
+    const element = event.currentTarget;
+
+    // Prefer the same-origin stream route, but fall back to the existing
+    // signed URL when an older story uses a media key the proxy cannot resolve.
+    if (
+      !mediaFallbackTried &&
+      fallbackUrl &&
+      element.src !== fallbackUrl
+    ) {
+      setMediaFallbackTried(true);
+      element.src = fallbackUrl;
+      if (element instanceof HTMLVideoElement) element.load();
+      return;
+    }
+
+    setMediaError(true);
+  }, [mediaFallbackTried, story?.mediaUrl]);
 
   const username = getUserName(story?.userId);
 
@@ -319,6 +342,7 @@ export default function StoryModal({
       setLikeBurst(false);
 
       setMediaError(false);
+      setMediaFallbackTried(false);
 
       timerStartedAtRef.current = null;
     },
@@ -1783,11 +1807,7 @@ export default function StoryModal({
                 autoPlay
                 muted
                 playsInline
-                onError={() =>
-                  setMediaError(
-                    true
-                  )
-                }
+                onError={handleMediaError}
                 className="h-full w-full object-contain"
               />
             ) : (
@@ -1797,7 +1817,7 @@ export default function StoryModal({
                 alt={story.caption || "Story media"}
                 loading="eager"
                 decoding="async"
-                onError={() => setMediaError(true)}
+                onError={handleMediaError}
                 className="absolute inset-0 h-full w-full object-contain"
               />
             )}
