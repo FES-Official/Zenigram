@@ -4,8 +4,10 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { uploadMediaDirect } from "@/app/lib/directS3Upload";
+import { useClipUpload } from "@/app/lib/ClipUploadContext";
 import TopicPicker from "../../../components/TopicPicker";
 
 const MAX_DURATION = 120;
@@ -40,6 +42,9 @@ function formatTime(value) {
 }
 
 export default function CreateClipPage() {
+  const router = useRouter();
+  const { data: session } = useSession();
+  const { startClipUpload, isUploading } = useClipUpload();
   const fileRef = useRef(null);
   const previewRef = useRef(null);
   const videoRef = useRef(null);
@@ -192,101 +197,44 @@ export default function CreateClipPage() {
     );
   };
 
-  const submit = async () => {
-    if (!items.length || saving) return;
+  const submit = () => {
+    if (!items.length || isUploading || saving) return;
     if (totalDuration > MAX_DURATION) {
       setError("Shorten the timeline to 2 minutes or less.");
       return;
     }
+    if (!session?.user?.id) {
+      setError("Please sign in again before creating a clip.");
+      return;
+    }
+
     try {
+      setError("");
       setSaving(true);
       setProgress(0);
-      setError("");
-      // Upload clip assets in parallel while preserving timeline order.
-      // Large videos already use multipart chunk concurrency, so limit them to
-      // two simultaneous files; lightweight assets can use four workers.
-      const progressByItem = items.map(() => 0);
-      const totalBytes = items.reduce(
-        (sum, item) => sum + Math.max(1, Number(item.file?.size) || 1),
-        0,
-      );
-      const hasLargeVideo = items.some(
-        (item) =>
-          item.type === "video" &&
-          Number(item.file?.size) >= 10 * 1024 * 1024,
-      );
-      const workerCount = Math.min(items.length, hasLargeVideo ? 2 : 4);
-      const uploadedItems = new Array(items.length);
-      let nextIndex = 0;
-      let uploadError = null;
-
-      const reportProgress = () => {
-        const loadedBytes = items.reduce((sum, item, index) => {
-          const bytes = Math.max(1, Number(item.file?.size) || 1);
-          return sum + bytes * (progressByItem[index] / 100);
-        }, 0);
-        setProgress(Math.min(90, Math.round((loadedBytes / totalBytes) * 90)));
-      };
-
-      const workers = Array.from({ length: workerCount }, async () => {
-        while (!uploadError) {
-          const index = nextIndex++;
-          if (index >= items.length) return;
-
-          try {
-            const uploaded = await uploadMediaDirect(items[index].file, {
-              onProgress: (value) => {
-                const percent = Number(value) || 0;
-                progressByItem[index] = Math.max(
-                  progressByItem[index],
-                  Math.min(100, Math.max(0, percent)),
-                );
-                reportProgress();
-              },
-            });
-
-            uploadedItems[index] = {
-              key: uploaded.key,
-              type: items[index].type,
-            };
-            progressByItem[index] = 100;
-            reportProgress();
-          } catch (error) {
-            uploadError = error;
-            return;
-          }
-        }
+      startClipUpload({
+        caption,
+        topics: selectedTopics,
+        items: items.map((item) => ({
+          file: item.file,
+          type: item.type,
+          duration: item.duration,
+          trimStart: item.trimStart,
+          filter: item.filter,
+        })),
+        textLayers,
+        transition,
       });
 
-      await Promise.all(workers);
-      if (uploadError) throw uploadError;
-
-      const mediaItems = uploadedItems;
-      setProgress(92);
-      const response = await fetch("/api/clips", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          caption,
-          topics: selectedTopics,
-          mediaItems,
-          timeline: items.map((item, index) => ({
-            mediaIndex: index,
-            duration: item.duration,
-            trimStart: item.trimStart,
-            filter: item.filter,
-          })),
-          textLayers,
-          transition,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Failed to create clip");
-      setProgress(100);
-      window.location.assign("/clips");
+      // The upload manager is mounted above this route, so navigation
+      // does not interrupt the S3 upload or clip publishing request.
+      const username = session.user.name;
+      router.push(
+        username ? `/profile/${encodeURIComponent(username)}` : "/clips",
+      );
     } catch (requestError) {
-      setError(requestError.message || "Failed to create clip");
       setSaving(false);
+      setError(requestError.message || "Unable to start clip upload.");
     }
   };
 
@@ -309,7 +257,7 @@ export default function CreateClipPage() {
         <header className="mb-5 flex items-center justify-between gap-3">
           <Link href="/clips" className="grid h-11 w-11 place-items-center rounded-full border border-red-900/50 bg-[#160709] text-xl text-red-200">×</Link>
           <div className="text-center"><p className="text-[10px] font-bold uppercase tracking-[.32em] text-red-500">Clip studio</p><h1 className="text-xl font-black sm:text-2xl">Create a clip</h1></div>
-          <button type="button" onClick={() => void submit()} disabled={!items.length || saving || totalDuration > MAX_DURATION} className="rounded-full bg-linear-to-r from-red-800 to-red-500 px-5 py-2.5 text-sm font-black shadow-lg shadow-red-950/50 disabled:opacity-35">{saving ? `${progress}%` : "Share"}</button>
+          <button type="button" onClick={() => void submit()} disabled={!items.length || saving || isUploading || totalDuration > MAX_DURATION} className="rounded-full bg-linear-to-r from-red-800 to-red-500 px-5 py-2.5 text-sm font-black shadow-lg shadow-red-950/50 disabled:opacity-35">{saving ? "Starting…" : "Create clip"}</button>
         </header>
 
         <div className="grid items-start gap-5 xl:grid-cols-[300px_minmax(360px,1fr)_350px]">
