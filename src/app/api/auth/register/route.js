@@ -5,6 +5,7 @@ import {
   getUserByEmail,
   getUserByUsername,
 } from "@/app/lib/socialStore";
+import { consumeVerifiedSignupEmail } from "@/app/lib/verification";
 
 function normalizeEmail(value) {
   const normalized = normalizeString(value);
@@ -64,12 +65,21 @@ export async function POST(req) {
       return jsonError("That email is already registered", 409);
     }
 
+    const emailVerificationConsumed = await consumeVerifiedSignupEmail(email);
+    if (!emailVerificationConsumed) {
+      return jsonError(
+        "Verify your email address before creating your account. Request a new code if the previous one expired.",
+        403,
+      );
+    }
+
     const hashedPassword = await bcrypt.hash(password, 12);
 
     const user = await createUser({
       fullname,
       username,
       email,
+      emailVerifiedAt: new Date().toISOString(),
       password: hashedPassword,
       authProvider: "credentials",
       DOB: dob,
