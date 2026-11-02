@@ -54,7 +54,7 @@ async function requestJson(url, options = {}) {
   return data;
 }
 
-function validateProfile(form) {
+function validateProfile(form, initialForm) {
   const errors = {};
   const username = form.username.trim().toLowerCase();
   const website = form.website.trim();
@@ -67,8 +67,9 @@ function validateProfile(form) {
   if (form.bio.trim().length > 300) {
     errors.bio = "Bio must be 300 characters or fewer.";
   }
-  if (mobile && !/^[0-9]{10,15}$/.test(mobile)) {
-    errors.mobile = "Enter a mobile number with 10–15 digits.";
+  const mobileChanged = mobile !== String(initialForm.mobile || "").trim();
+  if (mobileChanged && mobile && !/^\\+[1-9]\\d{7,14}$/.test(mobile)) {
+    errors.mobile = "Use international format with country code, e.g. +919876543210.";
   }
   if (website) {
     try {
@@ -100,6 +101,12 @@ export default function EditAccountPage() {
   const [accountDialog, setAccountDialog] = useState(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [accountBusy, setAccountBusy] = useState(false);
+  const [phoneOtp, setPhoneOtp] = useState("");
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
+  const [phoneOtpSending, setPhoneOtpSending] = useState(false);
+  const [phoneOtpVerifying, setPhoneOtpVerifying] = useState(false);
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [verifiedPhone, setVerifiedPhone] = useState("");
 
   const dirty = useMemo(
     () =>
@@ -157,8 +164,71 @@ export default function EditAccountPage() {
   const updateField = (name, value) => {
     setForm((current) => ({ ...current, [name]: value }));
     setFieldErrors((current) => ({ ...current, [name]: "" }));
+    if (name === "mobile") {
+      setPhoneOtp("");
+      setPhoneOtpSent(false);
+      setPhoneVerified(false);
+      setVerifiedPhone("");
+    }
     setError("");
     setSuccess("");
+  };
+
+  const sendPhoneOtp = async () => {
+    const phone = form.mobile.trim();
+    if (!/^\\+[1-9]\\d{7,14}$/.test(phone)) {
+      setFieldErrors((current) => ({
+        ...current,
+        mobile: "Use international format with country code, e.g. +919876543210.",
+      }));
+      return;
+    }
+
+    try {
+      setPhoneOtpSending(true);
+      setError("");
+      const data = await requestJson("/api/verification/phone/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      setPhoneOtpSent(true);
+      setPhoneOtp("");
+      setPhoneVerified(false);
+      setVerifiedPhone("");
+      setSuccess(data.message || "SMS verification code sent.");
+    } catch (sendError) {
+      setError(sendError.message || "Could not send the SMS code.");
+    } finally {
+      setPhoneOtpSending(false);
+    }
+  };
+
+  const verifyPhoneOtp = async () => {
+    const phone = form.mobile.trim();
+    if (!/^\\d{4,10}$/.test(phoneOtp)) {
+      setError("Enter the verification code from your SMS.");
+      return;
+    }
+
+    try {
+      setPhoneOtpVerifying(true);
+      setError("");
+      const data = await requestJson("/api/verification/phone/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, code: phoneOtp }),
+      });
+      setPhoneVerified(true);
+      setVerifiedPhone(phone);
+      setSuccess(data.message || "Phone number verified successfully.");
+    } catch (verifyError) {
+      setPhoneVerified(false);
+      setVerifiedPhone("");
+      setError(verifyError.message || "The SMS code could not be verified.");
+    } finally {
+      setPhoneOtpVerifying(false);
+    }
   };
 
   const handleImage = (event) => {
@@ -192,9 +262,19 @@ export default function EditAccountPage() {
     event.preventDefault();
     if (saving || !dirty) return;
 
-    const nextErrors = validateProfile(form);
+    const nextErrors = validateProfile(form, initialForm);
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
+
+    const phoneChanged = form.mobile.trim() !== String(initialForm.mobile || "").trim();
+    if (
+      phoneChanged &&
+      form.mobile.trim() &&
+      (!phoneVerified || verifiedPhone !== form.mobile.trim())
+    ) {
+      setError("Verify your new phone number before saving your profile.");
+      return;
+    }
 
     try {
       setSaving(true);
@@ -482,21 +562,73 @@ export default function EditAccountPage() {
                   </Field>
 
                   <Field label="Mobile number" error={fieldErrors.mobile}>
-                    <div className="relative">
-                      <Smartphone className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-zinc-600" />
-                      <input
-                        value={form.mobile}
-                        onChange={(event) =>
-                          updateField(
-                            "mobile",
-                            event.target.value.replace(/\D/g, "").slice(0, 15),
-                          )
-                        }
-                        inputMode="numeric"
-                        autoComplete="tel"
-                        placeholder="10–15 digits"
-                        className="input-control pl-11"
-                      />
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <Smartphone className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-zinc-600" />
+                        <input
+                          value={form.mobile}
+                          onChange={(event) =>
+                            updateField(
+                              "mobile",
+                              event.target.value.replace(/[^0-9+]/g, "").replace(/(?!^)[+]/g, "").slice(0, 16),
+                            )
+                          }
+                          inputMode="tel"
+                          autoComplete="tel"
+                          placeholder="+919876543210"
+                          className="input-control pl-11"
+                        />
+                      </div>
+                      {form.mobile.trim() !== String(initialForm.mobile || "").trim() && form.mobile.trim() && (
+                        <div className="rounded-xl border border-white/8 bg-white/3 p-3">
+                          {phoneVerified && verifiedPhone === form.mobile.trim() ? (
+                            <p className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
+                              <Check className="size-4" /> Phone number verified
+                            </p>
+                          ) : (
+                            <>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={sendPhoneOtp}
+                                  disabled={phoneOtpSending || phoneOtpVerifying}
+                                  className="rounded-lg border border-red-500/40 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-950/50 disabled:opacity-50"
+                                >
+                                  {phoneOtpSending ? "Sending..." : phoneOtpSent ? "Resend SMS code" : "Send SMS code"}
+                                </button>
+                                <span className="text-xs text-zinc-500">
+                                  Verification is required before saving this number.
+                                </span>
+                              </div>
+                              {phoneOtpSent && (
+                                <div className="mt-3 flex gap-2">
+                                  <input
+                                    value={phoneOtp}
+                                    onChange={(event) => setPhoneOtp(event.target.value.replace(/\\D/g, "").slice(0, 10))}
+                                    inputMode="numeric"
+                                    autoComplete="one-time-code"
+                                    maxLength={10}
+                                    placeholder="SMS code"
+                                    aria-label="SMS verification code"
+                                    className="input-control min-w-0 flex-1"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={verifyPhoneOtp}
+                                    disabled={phoneOtpVerifying || phoneOtp.length < 4}
+                                    className="rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-red-500 disabled:opacity-50"
+                                  >
+                                    {phoneOtpVerifying ? "Checking..." : "Verify"}
+                                  </button>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                      <p className="text-xs text-zinc-500">
+                        Enter your number with its country code. A code is sent whenever you add or change it.
+                      </p>
                     </div>
                   </Field>
                 </div>
