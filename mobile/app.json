@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Zenigram",
+    "slug": "zenigram",
+    "scheme": "zenigram",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {"supportsTablet": true, "bundleIdentifier": "com.fesofficial.zenigram"},
+    "android": {"package": "com.fesofficial.zenigram", "adaptiveIcon": {"backgroundColor": "#13090D"}},
+    "plugins": ["expo-router", "expo-secure-store", "expo-font"],
+    "experiments": {"typedRoutes": true}
+  }
+}
