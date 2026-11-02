@@ -283,6 +283,19 @@ export default function Profile() {
     };
   }, [username, sessionId, status, router]);
 
+  useEffect(() => {
+    if (
+      !sameId(sessionId, user?._id) ||
+      clipUploadTask?.status !== "published" ||
+      !clipUploadTask.clip?._id
+    ) return;
+
+    setUserClips((current) => [
+      clipUploadTask.clip,
+      ...current.filter((clip) => clip._id !== clipUploadTask.clip._id),
+    ]);
+  }, [sessionId, user?._id, clipUploadTask?.status, clipUploadTask?.clip]);
+
   /* -------------------------------------------------------
      Loading
   ------------------------------------------------------- */
@@ -359,19 +372,6 @@ export default function Profile() {
       setDeletingClipId("");
     }
   };
-
-  useEffect(() => {
-    if (
-      !isOwnProfile ||
-      clipUploadTask?.status !== "published" ||
-      !clipUploadTask.clip?._id
-    ) return;
-
-    setUserClips((current) => [
-      clipUploadTask.clip,
-      ...current.filter((clip) => clip._id !== clipUploadTask.clip._id),
-    ]);
-  }, [isOwnProfile, clipUploadTask?.status, clipUploadTask?.clip]);
 
   const storyGroup = {
     user,
