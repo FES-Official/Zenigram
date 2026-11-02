@@ -68,7 +68,7 @@ function validateProfile(form, initialForm) {
     errors.bio = "Bio must be 300 characters or fewer.";
   }
   const mobileChanged = mobile !== String(initialForm.mobile || "").trim();
-  if (mobileChanged && mobile && !/^\\+[1-9]\\d{7,14}$/.test(mobile)) {
+  if (mobileChanged && mobile && !/^\+[1-9]\d{7,14}$/.test(mobile)) {
     errors.mobile = "Use international format with country code, e.g. +919876543210.";
   }
   if (website) {
@@ -176,7 +176,7 @@ export default function EditAccountPage() {
 
   const sendPhoneOtp = async () => {
     const phone = form.mobile.trim();
-    if (!/^\\+[1-9]\\d{7,14}$/.test(phone)) {
+    if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
       setFieldErrors((current) => ({
         ...current,
         mobile: "Use international format with country code, e.g. +919876543210.",
@@ -206,7 +206,7 @@ export default function EditAccountPage() {
 
   const verifyPhoneOtp = async () => {
     const phone = form.mobile.trim();
-    if (!/^\\d{4,10}$/.test(phoneOtp)) {
+    if (!/^\d{4,10}$/.test(phoneOtp)) {
       setError("Enter the verification code from your SMS.");
       return;
     }
@@ -604,7 +604,7 @@ export default function EditAccountPage() {
                                 <div className="mt-3 flex gap-2">
                                   <input
                                     value={phoneOtp}
-                                    onChange={(event) => setPhoneOtp(event.target.value.replace(/\\D/g, "").slice(0, 10))}
+                                    onChange={(event) => setPhoneOtp(event.target.value.replace(/\D/g, "").slice(0, 10))}
                                     inputMode="numeric"
                                     autoComplete="one-time-code"
                                     maxLength={10}
