@@ -272,11 +272,22 @@ export async function sendPhoneUpdateOtp(userId, phone) {
 
   const identifier = `${userId}#${normalizedPhone}`;
   const requestId = randomBytes(16).toString("hex");
+  const accountRateId = randomBytes(16).toString("hex");
   await reserveState(PHONE_PURPOSE, identifier, {
     ownerId: String(userId),
     phone: normalizedPhone,
     requestId,
   });
+
+  try {
+    await reserveState("PHONE_UPDATE_RATE", String(userId), {
+      requestId: accountRateId,
+      ownerId: String(userId),
+    });
+  } catch (error) {
+    await deleteStateIfMatches(PHONE_PURPOSE, identifier, "requestId", requestId);
+    throw error;
+  }
 
   try {
     const body = new URLSearchParams({
