@@ -7,6 +7,11 @@ import {
   getUserByUsername,
   updateUser,
 } from "@/app/lib/socialStore";
+import {
+  consumeVerifiedPhoneUpdate,
+  hasVerifiedPhoneUpdate,
+  normalizeE164Phone,
+} from "@/app/lib/verification";
 
 export async function POST(req) {
   try {
@@ -26,8 +31,19 @@ export async function POST(req) {
       return jsonError("Enter a valid username", 400);
     }
     if (bio.length > 300) return jsonError("Bio is too long", 400);
-    if (mobile && !/^[0-9]{10,15}$/.test(mobile)) {
-      return jsonError("Enter a valid mobile number", 400);
+    const mobileChanged = mobile !== String(currentUser.mobile || "");
+    if (mobileChanged && mobile && !normalizeE164Phone(mobile)) {
+      return jsonError(
+        "Use international phone format with country code, e.g. +919876543210.",
+        400,
+      );
+    }
+    if (
+      mobileChanged &&
+      mobile &&
+      !(await hasVerifiedPhoneUpdate(session.user.id, mobile))
+    ) {
+      return jsonError("Verify your new phone number before saving it.", 403);
     }
     if (website) {
       try {
@@ -50,6 +66,13 @@ export async function POST(req) {
       }
       data.verifiedProfilePic = uploaded.url;
       data.verifiedProfilePicKey = uploaded.key;
+    }
+
+    if (mobileChanged && mobile) {
+      const consumed = await consumeVerifiedPhoneUpdate(session.user.id, mobile);
+      if (!consumed) {
+        return jsonError("Your phone verification has expired. Please verify the number again.", 403);
+      }
     }
 
     const user = await updateUser(session.user.id, {
