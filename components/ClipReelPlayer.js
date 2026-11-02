@@ -420,6 +420,34 @@ export default function ClipReelPlayer({
     activeEntry
   );
 
+  // Keep the video segment stable while the playhead advances within it.
+  // Otherwise video effects would re-run on every 20 FPS clock update.
+  const activeEntryId = activeEntry?.id;
+  const activeEntryUrl = activeEntry?.url;
+  const activeEntryType = activeEntry?.type;
+  const activeEntryStart = activeEntry?.start;
+  const activeEntryDuration = activeEntry?.duration;
+  const activeEntryTrimStart = activeEntry?.trimStart;
+
+  const videoEntry = useMemo(() => {
+    if (!activeEntryId) return null;
+    return {
+      id: activeEntryId,
+      url: activeEntryUrl,
+      type: activeEntryType,
+      start: activeEntryStart,
+      duration: activeEntryDuration,
+      trimStart: activeEntryTrimStart,
+    };
+  }, [
+    activeEntryId,
+    activeEntryUrl,
+    activeEntryType,
+    activeEntryStart,
+    activeEntryDuration,
+    activeEntryTrimStart,
+  ]);
+
   const transition = [
     "fade",
     "cut",
@@ -524,7 +552,7 @@ export default function ClipReelPlayer({
     */
 
     playbackAnchorRef.current =
-      performance.now() - time * 1000;
+      performance.now() - timeRef.current * 1000;
 
     let animationFrame = null;
     let lastUpdate = 0;
@@ -582,7 +610,7 @@ export default function ClipReelPlayer({
 
     if (
       !video ||
-      activeEntry?.type !== "video"
+      videoEntry?.type !== "video"
     ) {
       return undefined;
     }
@@ -613,7 +641,7 @@ export default function ClipReelPlayer({
     }
 
     return undefined;
-  }, [activeEntry?.id, activeEntry?.url]);
+  }, [videoEntry]);
 
   /* ---------------------------------
      VIDEO PLAY / PAUSE
@@ -639,7 +667,7 @@ export default function ClipReelPlayer({
     // Synchronize before resuming playback.
     seekVideo(
       video,
-      activeEntry,
+      videoEntry,
       timeRef.current,
       0.5
     );
@@ -652,11 +680,7 @@ export default function ClipReelPlayer({
         // The user can still start playback manually.
       });
     }
-  }, [
-    activeEntry?.id,
-    playing,
-    muted,
-  ]);
+  }, [videoEntry, playing, muted]);
 
   /* ---------------------------------
      VIDEO DRIFT CORRECTION
@@ -675,11 +699,11 @@ export default function ClipReelPlayer({
 
     seekVideo(
       video,
-      activeEntry,
+      videoEntry,
       time,
       0.75
     );
-  }, [time, activeEntry?.id, playing]);
+  }, [time, videoEntry, playing]);
 
   /* ---------------------------------
      PLAY / PAUSE

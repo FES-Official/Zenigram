@@ -184,7 +184,7 @@ export default function RegisterPage() {
         return;
       }
 
-      router.replace("/login");
+      router.replace(loginResult.url || "/");
       router.refresh();
     } catch (error) {
       console.error("Registration error:", error);

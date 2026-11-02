@@ -172,6 +172,8 @@ export default function StoryModal({
   const [remainingMs, setRemainingMs] = useState(() =>
     getDurationMs(stories[safeInitialIndex])
   );
+  const remainingMsRef = useRef(remainingMs);
+  remainingMsRef.current = remainingMs;
 
   const [flipped, setFlipped] = useState(false);
 
@@ -430,10 +432,11 @@ export default function StoryModal({
       return undefined;
     }
 
+    const resumeFrom = remainingMsRef.current;
     const startFrom =
-      remainingMs > 0
-        ? remainingMs
-        : getDurationMs(story);
+      resumeFrom > 0
+        ? resumeFrom
+        : duration;
 
     timerStartedAtRef.current =
       performance.now();
@@ -489,6 +492,7 @@ export default function StoryModal({
     moveToStory,
     story?._id,
     storyIndex,
+    duration,
   ]);
 
   useEffect(() => {
@@ -1811,14 +1815,16 @@ export default function StoryModal({
                 className="h-full w-full object-contain"
               />
             ) : (
-              <img
+              <Image
                 key={story._id}
                 src={storyMediaUrl}
                 alt={story.caption || "Story media"}
-                loading="eager"
-                decoding="async"
+                fill
+                unoptimized
+                sizes="100vw"
+                priority
                 onError={handleMediaError}
-                className="absolute inset-0 h-full w-full object-contain"
+                className="object-contain"
               />
             )}
 

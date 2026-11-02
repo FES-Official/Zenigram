@@ -30,11 +30,11 @@ import {
 } from "react-icons/io5";
 import DrawingPad from "../../../components/chat/DrawingPad";
 import ClipReelPlayer from "../../../components/ClipReelPlayer";
-import { getRealtimeSocket } from "@/app/lib/realtimeClient";
+import { getRealtimeSocket, isRealtimeEnabled } from "@/app/lib/realtimeClient";
 import { uploadMediaDirect } from "@/app/lib/directS3Upload";
 import Navbar from "../../../components/navbar";
 
-const MESSAGE_POLL_INTERVAL = 60000;
+const MESSAGE_POLL_INTERVAL = isRealtimeEnabled() ? 60000 : 10000;
 const QUICK_REACTIONS = ["❤️", "😂", "😮", "😢", "👏", "🔥"];
 
 export default function MessagesPage() {
@@ -279,6 +279,29 @@ export default function MessagesPage() {
     void Promise.all([loadConversations(), loadInvitations()]);
   }, [loadConversations, loadInvitations]);
 
+  // Vercel Functions do not run this repository's custom server.js process.
+  // Keep conversation lists and invitations fresh when Socket.IO is disabled.
+  useEffect(() => {
+    if (!currentUserId || isRealtimeEnabled()) return undefined;
+
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      void Promise.all([
+        loadConversations({ silent: true }),
+        loadInvitations({ silent: true }),
+      ]);
+    };
+    const interval = window.setInterval(refresh, 15000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [currentUserId, loadConversations, loadInvitations]);
+
   useEffect(() => {
     if (!currentUserId) return undefined;
     const socket = getRealtimeSocket();
@@ -414,15 +437,20 @@ export default function MessagesPage() {
 
     void loadMessages(selectedId);
 
-    const interval = window.setInterval(() => {
+    const refreshMessages = () => {
+      if (document.visibilityState !== "visible") return;
       void loadMessages(selectedId, { silent: true });
-    }, MESSAGE_POLL_INTERVAL);
+      if (!isRealtimeEnabled()) void loadConversations({ silent: true });
+    };
+    const interval = window.setInterval(refreshMessages, MESSAGE_POLL_INTERVAL);
+    document.addEventListener("visibilitychange", refreshMessages);
 
     return () => {
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshMessages);
       messageRequestRef.current += 1;
     };
-  }, [loadMessages, selectedId]);
+  }, [loadConversations, loadMessages, selectedId]);
 
   useEffect(() => {
     if (!selectedId || !currentUserId || !isPageActive || !messages.length) {

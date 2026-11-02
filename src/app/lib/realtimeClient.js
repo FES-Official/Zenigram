@@ -2,8 +2,15 @@
 
 import { io } from "socket.io-client";
 
+export function isRealtimeEnabled() {
+  return (
+    process.env.NODE_ENV !== "production" ||
+    process.env.NEXT_PUBLIC_REALTIME_ENABLED === "true"
+  );
+}
+
 export function getRealtimeSocket() {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || !isRealtimeEnabled()) return null;
 
   if (!globalThis.__linkexSocket) {
     globalThis.__linkexSocket = io({

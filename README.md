@@ -30,12 +30,40 @@ AWS_S3_REGION=
 AWS_BUCKET_NAME=
 DYNAMODB_TABLE_NAME=linkex-app
 NEXT_PUBLIC_MAPBOX_TOKEN=
+RESEND_API_KEY=
+EMAIL_FROM=
+OTP_SECRET=
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_VERIFY_SERVICE_SID=
+# Set true only when running the custom Node server (server.js).
+NEXT_PUBLIC_REALTIME_ENABLED=false
 ```
 
 Set `AWS_DYNAMODB_REGION` for DynamoDB (or use `AWS_REGION` as the shared AWS
 region). Set both service-specific values when S3 and DynamoDB are in
 different regions; the app deliberately does not reuse the S3 region for
 DynamoDB because identically named tables can exist in multiple regions.
+
+### Verification providers
+
+Password-based sign-up requires an email OTP delivered through Resend. Updating a
+phone number requires an SMS OTP delivered through Twilio Verify. Configure
+`RESEND_API_KEY` and a verified `EMAIL_FROM` sender, plus
+`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_VERIFY_SERVICE_SID`.
+Set a dedicated `OTP_SECRET`; `NEXTAUTH_SECRET` is only a fallback. Never commit
+these values. `npm run aws:setup` also enables DynamoDB TTL on the `ttl` field
+used by temporary verification and rate-limit records. Expiry is still checked
+in application code because DynamoDB TTL cleanup is asynchronous.
+
+### Realtime behavior
+
+The custom `server.js` process hosts Socket.IO for local development and
+self-hosted Node deployments. Vercel's Next.js Function deployment does not run
+that custom server, so realtime is disabled there by default and the UI uses
+short polling for messages, conversations, invitations, and navigation badges.
+For a self-hosted production deployment using `server.js`, set
+`NEXT_PUBLIC_REALTIME_ENABLED=true` to enable Socket.IO in the browser.
 
 ## Scripts
 

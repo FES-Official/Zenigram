@@ -183,6 +183,7 @@ function DashboardDialog({
     if (!open) return undefined;
 
     const previousOverflow = document.body.style.overflow;
+    const triggerElement = triggerRef.current;
     document.body.style.overflow = "hidden";
     closeRef.current?.focus();
 
@@ -195,7 +196,7 @@ function DashboardDialog({
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
-      triggerRef.current?.focus();
+      triggerElement?.focus();
     };
   }, [open, onClose, triggerRef]);
 

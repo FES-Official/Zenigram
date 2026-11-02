@@ -353,12 +353,13 @@ export default function StoryEditor() {
 
   // Keep blob URLs cleaned up when the component unmounts.
   useEffect(() => {
+    const objectUrls = objectUrlsRef.current;
     return () => {
-      for (const url of objectUrlsRef.current) {
+      for (const url of objectUrls) {
         URL.revokeObjectURL(url);
       }
 
-      objectUrlsRef.current.clear();
+      objectUrls.clear();
     };
   }, []);
 

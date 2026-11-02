@@ -2,7 +2,9 @@ import nextEnv from "@next/env";
 import {
   CreateTableCommand,
   DescribeTableCommand,
+  DescribeTimeToLiveCommand,
   DynamoDBClient,
+  UpdateTimeToLiveCommand,
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 import {
@@ -103,6 +105,33 @@ if (!tableExists) {
   console.log(`Created DynamoDB table ${DYNAMODB_TABLE_NAME}.`);
 } else {
   console.log(`DynamoDB table ${DYNAMODB_TABLE_NAME} already exists.`);
+}
+
+// Verification records set a numeric `ttl` attribute (Unix epoch seconds).
+// Native TTL cleanup is asynchronous; application expiry checks remain authoritative.
+const ttlDescription = await dynamo.send(
+  new DescribeTimeToLiveCommand({ TableName: DYNAMODB_TABLE_NAME }),
+);
+const ttlInfo = ttlDescription.TimeToLiveDescription || {};
+if (ttlInfo.TimeToLiveStatus === "DISABLED" || !ttlInfo.TimeToLiveStatus) {
+  await dynamo.send(
+    new UpdateTimeToLiveCommand({
+      TableName: DYNAMODB_TABLE_NAME,
+      TimeToLiveSpecification: { Enabled: true, AttributeName: "ttl" },
+    }),
+  );
+  console.log(`Enabled DynamoDB TTL on ${DYNAMODB_TABLE_NAME}.ttl.`);
+} else if (
+  ttlInfo.TimeToLiveStatus === "ENABLED" &&
+  ttlInfo.AttributeName === "ttl"
+) {
+  console.log(`DynamoDB TTL is already enabled on ${DYNAMODB_TABLE_NAME}.ttl.`);
+} else if (ttlInfo.TimeToLiveStatus === "ENABLED") {
+  console.warn(
+    `DynamoDB TTL is already enabled on ${ttlInfo.AttributeName}; leaving the existing TTL configuration unchanged.`,
+  );
+} else {
+  console.log(`DynamoDB TTL status is ${ttlInfo.TimeToLiveStatus || "unknown"}; no change was made.`);
 }
 
 await s3.send(new HeadBucketCommand({ Bucket: AWS_BUCKET_NAME }));

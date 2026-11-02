@@ -7,7 +7,7 @@ import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
-import { getRealtimeSocket } from "@/app/lib/realtimeClient";
+import { getRealtimeSocket, isRealtimeEnabled } from "@/app/lib/realtimeClient";
 
 /* -------------------------------------------------------------------------- */
 /*                                   NAVBAR                                   */
@@ -296,8 +296,10 @@ export default function Navbar() {
     void refreshNavigationData();
 
     const interval = window.setInterval(() => {
-      void refreshNavigationData();
-    }, 60_000);
+      if (document.visibilityState === "visible") {
+        void refreshNavigationData();
+      }
+    }, isRealtimeEnabled() ? 60_000 : 20_000);
 
     return () => {
       window.clearInterval(interval);
