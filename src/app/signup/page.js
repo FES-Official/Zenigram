@@ -78,7 +78,7 @@ export default function RegisterPage() {
 
   async function sendEmailOtp() {
     const email = formData.email.trim().toLowerCase();
-    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setErrors((prev) => ({ ...prev, email: "Enter a valid email address first." }));
       return;
     }
@@ -107,7 +107,7 @@ export default function RegisterPage() {
 
   async function verifyEmailOtp() {
     const email = formData.email.trim().toLowerCase();
-    if (!/^\\d{6}$/.test(emailOtp)) {
+    if (!/^\d{6}$/.test(emailOtp)) {
       setMessage("Enter the 6-digit code sent to your email.");
       return;
     }
@@ -258,7 +258,7 @@ export default function RegisterPage() {
                   <div className="flex min-w-0 flex-1 gap-2">
                     <input
                       value={emailOtp}
-                      onChange={(event) => setEmailOtp(event.target.value.replace(/\\D/g, "").slice(0, 6))}
+                      onChange={(event) => setEmailOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
                       inputMode="numeric"
                       autoComplete="one-time-code"
                       maxLength={6}
