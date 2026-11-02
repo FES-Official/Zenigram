@@ -21,6 +21,12 @@ export default function RegisterPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [emailOtp, setEmailOtp] = useState("");
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [emailOtpSending, setEmailOtpSending] = useState(false);
+  const [emailOtpVerifying, setEmailOtpVerifying] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [verifiedEmail, setVerifiedEmail] = useState("");
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -31,6 +37,12 @@ export default function RegisterPage() {
   const handleChange = (event) => {
     const { name, value } = event.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    if (name === "email") {
+      setEmailOtp("");
+      setEmailOtpSent(false);
+      setEmailVerified(false);
+      setVerifiedEmail("");
+    }
     setErrors((prev) => ({ ...prev, [name]: "" }));
     setMessage("");
   };
@@ -64,12 +76,77 @@ export default function RegisterPage() {
     return nextErrors;
   };
 
+  async function sendEmailOtp() {
+    const email = formData.email.trim().toLowerCase();
+    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+      setErrors((prev) => ({ ...prev, email: "Enter a valid email address first." }));
+      return;
+    }
+
+    setEmailOtpSending(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/verification/email/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Could not send the email code.");
+      setEmailOtpSent(true);
+      setEmailOtp("");
+      setEmailVerified(false);
+      setVerifiedEmail("");
+      setMessage(data.message || "Check your inbox for the verification code.");
+    } catch (error) {
+      setMessage(error.message || "Could not send the email code.");
+    } finally {
+      setEmailOtpSending(false);
+    }
+  }
+
+  async function verifyEmailOtp() {
+    const email = formData.email.trim().toLowerCase();
+    if (!/^\\d{6}$/.test(emailOtp)) {
+      setMessage("Enter the 6-digit code sent to your email.");
+      return;
+    }
+
+    setEmailOtpVerifying(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/verification/email/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code: emailOtp }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "The email code could not be verified.");
+      setEmailVerified(true);
+      setVerifiedEmail(email);
+      setMessage("Your email address has been verified.");
+    } catch (error) {
+      setEmailVerified(false);
+      setVerifiedEmail("");
+      setMessage(error.message || "The email code could not be verified.");
+    } finally {
+      setEmailOtpVerifying(false);
+    }
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     const nextErrors = validate();
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0) return;
+    if (
+      !emailVerified ||
+      verifiedEmail !== formData.email.trim().toLowerCase()
+    ) {
+      setMessage("Verify your email address before creating your account.");
+      return;
+    }
 
     setLoading(true);
     setMessage("");
@@ -166,6 +243,49 @@ export default function RegisterPage() {
             error={errors.email}
             autoComplete="email"
           />
+          <div className="space-y-2">
+            {!emailVerified ? (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={sendEmailOtp}
+                  disabled={emailOtpSending || loading || !formData.email.trim()}
+                  className="rounded-md border border-red-500/40 px-4 py-2.5 text-sm font-semibold text-red-200 transition hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {emailOtpSending ? "Sending code..." : emailOtpSent ? "Resend email code" : "Send email code"}
+                </button>
+                {emailOtpSent && (
+                  <div className="flex min-w-0 flex-1 gap-2">
+                    <input
+                      value={emailOtp}
+                      onChange={(event) => setEmailOtp(event.target.value.replace(/\\D/g, "").slice(0, 6))}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      placeholder="6-digit code"
+                      aria-label="Email verification code"
+                      className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm tracking-[0.2em] outline-none focus:border-red-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={verifyEmailOtp}
+                      disabled={emailOtpVerifying || emailOtp.length !== 6}
+                      className="rounded-md bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {emailOtpVerifying ? "Checking..." : "Verify"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="flex items-center gap-2 text-sm font-medium text-emerald-300">
+                <span aria-hidden="true">✓</span> Email address verified
+              </p>
+            )}
+            <p className="text-xs text-zinc-500">
+              We’ll send a one-time code to confirm that you own this email address.
+            </p>
+          </div>
           <AuthInput
             label="Password"
             name="password"
