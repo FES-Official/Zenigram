@@ -1,33 +1,57 @@
-# Zenigram Mobile
+# Zenigram Mobile (React Native)
 
-Native iOS and Android client for the existing Zenigram platform.
+This directory is the native Android client. The existing Next.js application remains the web client and backend during the migration.
 
-- Keep the current Next.js web application and its Vercel deployment intact.
-- Build the mobile app as an independent Expo / React Native application.
-- Use the existing Next.js API and AWS services as the source of truth.
-- Reuse business rules and API contracts, not browser components or DOM code.
-- Preserve the dark black-cherry / crimson identity with native navigation, gestures, safe areas and accessibility.
+## Non-negotiable migration rules
 
-## Stack
+- Preserve the existing web app; do not replace or move its Next.js routes.
+- Reuse the existing DynamoDB records, private S3 bucket, and server-side business rules.
+- Never put AWS access keys, DynamoDB credentials, or privileged secrets in the mobile bundle.
+- Keep mobile screens native: React Native views, navigation, gestures, media pickers, and video playback. Do not use a WebView as the application shell.
+- Port and test shared pure business logic (especially feed preferences/ranking) rather than rewriting it from memory.
+- Do not expose the existing NextAuth JWT or its signing secret to the mobile client.
 
-Expo SDK 57 / React Native 0.86, TypeScript, Expo Router, NativeWind 4.2.7, TanStack Query, Axios and Expo SecureStore. NativeWind 4.2.7 documents Expo SDK 57 compatibility. Keep Expo and native module versions aligned with Expo SDK compatibility checks.
+## Current backend compatibility findings
 
-## Setup
+The current web APIs authenticate with `getServerSession(authOptions)`, which relies on NextAuth browser cookies. A native app cannot safely depend on browser cookie behavior. Before mobile sign-in can be production-ready, add a mobile authentication contract (short-lived access token + rotating refresh token, revocation, expiry, device/session management, and rate limiting) and a server-side request authenticator used by mobile API requests.
 
-1. Run from the mobile directory.
-2. Copy .env.example to .env.
-3. Set EXPO_PUBLIC_API_URL to the HTTPS origin of the deployed Next.js backend.
-4. Run npm install and npx expo install --fix.
-5. Run npx expo-doctor and npm run typecheck.
-6. Run npm start.
+Existing endpoints worth reusing after that authentication layer is added:
 
-Use native development builds for camera, notifications, media, upload and authentication testing. Expo Go is not a substitute for release validation.
+- `GET/POST /api/posts` â€” feed retrieval and post creation
+- `GET/POST /api/clips` â€” clips feed and publishing
+- `GET/PUT/PATCH /api/feed-preferences` â€” user-controlled feed
+- `POST /api/media/upload` â€” signed S3 uploads and multipart video uploads
+- `GET/POST /api/conversations` and message routes â€” messaging
+- stories, notifications, profile, search, saved content, audience/privacy and story-globe API routes
 
-## Authentication status
+Every endpoint must be audited for cookie-only assumptions, browser APIs, CSRF behavior, pagination, and response consistency before mobile calls it.
 
-The web app uses NextAuth v4 browser sessions. The mobile client must not reuse browser cookies, embed AWS credentials, or store bearer tokens in AsyncStorage.
+## Feature parity checklist
 
-The client expects backend-issued access/refresh tokens:
-- POST /api/mobile/auth/login
-- POST /api/mobile/auth/refresh
-- POST¶»§q«^
+- [ ] Credentials and Google sign-in, sign-up, email/phone verification, logout, session restore
+- [ ] Home feed, five feed modes, topic/source weights, mute creator/topic, "why am I seeing this?"
+- [ ] Posts, multi-image layouts, topics, audience controls, likes, comments, shares, saves
+- [ ] Stories, story editor, location tagging, story viewer, story events, Stories Globe
+- [ ] Clips, native video playback, clip creation/editor, timeline/text overlays, upload progress
+- [ ] Messaging, groups, drawing messages, reactions, edits/deletes, real-time updates and polling fallback
+- [ ] Profiles, followers/following, privacy, blocking/unblocking, hidden accounts and Z+ security
+- [ ] Notifications, search, saved collections, missions/supporter milestones, professional dashboard
+- [ ] Reports, account controls, legal/privacy screens and accessibility
+
+## Mobile UX direction
+
+A native, dark-first interface using Zenigram's black-cherry / burgundy / crimson identity, with clear contrast and accessible text sizes. Use native bottom tabs, gesture-aware navigation, skeleton loading, optimistic interactions with rollback, pull-to-refresh, infinite lists, cached media, and explicit upload state.
+
+## Delivery sequence
+
+1. Audit route contracts and feature inventory against the current `main` branch.
+2. Build the Expo + TypeScript + NativeWind foundation and design system.
+3. Implement mobile auth/session APIs and native authentication screens.
+4. Implement feed, profiles, posts, stories and clips in vertical slices.
+5. Implement messaging, notifications, privacy/security and remaining features.
+6. Add automated tests, Android device QA, accessibility/performance checks.
+7. Configure EAS production builds, Android App Bundle signing, Play Console listing and release testing.
+
+## Environment
+
+Create a local `.env` from `.env.example`. Only public API base URLs and public OAuth client identifiers belong in the mobile app. Server secrets remain in Vercel/server environment variables.
