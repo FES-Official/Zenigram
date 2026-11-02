@@ -618,7 +618,7 @@ export default function ClipReelPlayer({
     const handleLoadedMetadata = () => {
       seekVideo(
         video,
-        activeEntry,
+        videoEntry,
         timeRef.current,
         0.1
       );
@@ -652,7 +652,7 @@ export default function ClipReelPlayer({
 
     if (
       !video ||
-      activeEntry?.type !== "video"
+      videoEntry?.type !== "video"
     ) {
       return;
     }
@@ -692,7 +692,7 @@ export default function ClipReelPlayer({
     if (
       !playing ||
       !video ||
-      activeEntry?.type !== "video"
+      videoEntry?.type !== "video"
     ) {
       return;
     }
