@@ -8,6 +8,7 @@ import SupportButton from "../../../../components/supportbtn";
 import Navbar from "../../../../components/navbar";
 import PostGrid from "../../../../components/postGrid";
 import StoryModal from "../../../../components/story-globe/StoryModal";
+import { useClipUpload } from "@/app/lib/ClipUploadContext";
 
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -108,6 +109,7 @@ const getWebsiteUrl = (website) => {
 
 export default function Profile() {
   const { data: session, status } = useSession();
+  const { task: clipUploadTask, dismissTask } = useClipUpload();
   const params = useParams();
   const router = useRouter();
 
@@ -358,6 +360,19 @@ export default function Profile() {
     }
   };
 
+  useEffect(() => {
+    if (
+      !isOwnProfile ||
+      clipUploadTask?.status !== "published" ||
+      !clipUploadTask.clip?._id
+    ) return;
+
+    setUserClips((current) => [
+      clipUploadTask.clip,
+      ...current.filter((clip) => clip._id !== clipUploadTask.clip._id),
+    ]);
+  }, [isOwnProfile, clipUploadTask?.status, clipUploadTask?.clip]);
+
   const storyGroup = {
     user,
     stories: userStories,
@@ -379,6 +394,75 @@ export default function Profile() {
       </div>
 
       <main className="relative z-10 mx-auto w-full max-w-5xl px-3 pb-16 pt-24 sm:px-6">
+        {isOwnProfile && clipUploadTask && (
+          <section
+            aria-live="polite"
+            className="mb-5 overflow-hidden rounded-3xl border border-red-500/25 bg-[#16080b]/95 p-4 shadow-xl shadow-red-950/20 sm:p-5"
+          >
+            <div className="flex items-start gap-3">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-500/15 text-xl text-red-300">
+                {clipUploadTask.status === "published" ? "✓" : clipUploadTask.status === "failed" ? "!" : "↑"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="font-bold text-white">
+                    {clipUploadTask.status === "published"
+                      ? "Clip published"
+                      : clipUploadTask.status === "failed"
+                        ? "Clip upload failed"
+                        : "Creating your clip"}
+                  </h2>
+                  <span className="text-sm font-bold tabular-nums text-red-200">
+                    {clipUploadTask.progress}%
+                  </span>
+                </div>
+                <p className="mt-1 truncate text-xs text-white/55">
+                  {clipUploadTask.caption || "Your new clip"} · {clipUploadTask.step}
+                </p>
+                <div
+                  className="mt-3 h-2 overflow-hidden rounded-full bg-white/10"
+                  role="progressbar"
+                  aria-label="Clip upload progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={clipUploadTask.progress}
+                >
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-red-700 via-red-500 to-orange-300 transition-[width] duration-300"
+                    style={{ width: `${clipUploadTask.progress}%` }}
+                  />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/45">
+                  <span>
+                    {clipUploadTask.uploadedCount}/{clipUploadTask.fileCount} media files uploaded
+                  </span>
+                  <span>
+                    {clipUploadTask.status === "published"
+                      ? "Your clip is now available in your Clips tab."
+                      : clipUploadTask.status === "failed"
+                        ? "Your original media is still on your device. Try creating the clip again."
+                        : "You can keep using Zenigram while this continues."}
+                  </span>
+                </div>
+                {clipUploadTask.error && (
+                  <p className="mt-3 rounded-xl border border-red-400/20 bg-red-950/40 p-3 text-xs text-red-200">
+                    {clipUploadTask.error}
+                  </p>
+                )}
+              </div>
+              {clipUploadTask.status !== "uploading" && (
+                <button
+                  type="button"
+                  onClick={dismissTask}
+                  aria-label="Dismiss clip upload status"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/8 text-white/70 hover:bg-white/15"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </section>
+        )}
         {/* ===================================================
             PROFILE CARD
         =================================================== */}
