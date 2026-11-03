@@ -100,20 +100,24 @@ export default function CreateClipScreen() {
     }
 
     // Preview the selected source interval, not the entire original video.
-    player.replace(selected.uri);
     player.timeUpdateEventInterval=0.12;
-    player.seekTo(selected.trimStart);
-    player.play();
-
-    const subscription=player.addListener("timeUpdate",event=>{
+    const loadSubscription=player.addListener("sourceLoad",()=>{
+      player.seekTo(selected.trimStart);
+      player.play();
+    });
+    const timeSubscription=player.addListener("timeUpdate",event=>{
       const segmentEnd=selected.trimStart+selected.duration;
       if(event.currentTime>=segmentEnd){
         player.pause();
         player.seekTo(selected.trimStart);
       }
     });
+    player.replace(selected.uri);
 
-    return ()=>subscription.remove();
+    return ()=>{
+      loadSubscription.remove();
+      timeSubscription.remove();
+    };
   },[player,selected?.id,selected?.type,selected?.uri,selected?.trimStart,selected?.duration]);
 
   function addAssets(chosen:ImagePicker.ImagePickerAsset[]) {
