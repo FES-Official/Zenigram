@@ -48,7 +48,7 @@ function StoryRange({label,value,min,max,onChange}:{
   return <View className="mt-3">
     <View className="mb-2 flex-row justify-between"><Text className="text-xs font-semibold" style={{color:colors.muted}}>{label}</Text><Text className="text-xs font-bold" style={{color:colors.rose}}>{value}</Text></View>
     <View onLayout={event=>setWidth(event.nativeEvent.layout.width)} onStartShouldSetResponder={()=>true} onMoveShouldSetResponder={()=>true} onResponderGrant={update} onResponderMove={update} accessibilityRole="adjustable" accessibilityLabel={label} style={{height:28,justifyContent:"center"}}>
-      <View className="h-2 overflow-hidden rounded-full" style={{backgroundColor:colors.surface}}><View className="h-2 rounded-full" style={{width:percent+"%",backgroundColor:colors.crimson}}/></View>
+      <View className="h-2 overflow-hidden rounded-full" style={{backgroundColor:colors.surface}}><View className="h-2 rounded-full" style={{width:(percent+"%") as `${number}%`,backgroundColor:colors.crimson}}/></View>
       <View className="absolute h-5 w-5 rounded-full border-2" style={{left:Math.max(0,Math.min(width-20,(percent/100)*width-10)),backgroundColor:colors.rose,borderColor:colors.background}}/>
     </View>
   </View>;
@@ -198,7 +198,7 @@ export default function CreateStoryScreen() {
       {renderStoryMedia()}
       <View pointerEvents="none" className="absolute inset-0" style={{backgroundColor:activeFilter.tint}}/>
       {texts.map(item=><View key={item.id} pointerEvents="none" className="absolute max-w-[88%] rounded-xl px-3 py-2" style={{
-        left:Math.max(0,Math.min(88,item.x-30))+"%",top:item.y+"%",backgroundColor:item.background?item.backgroundColor+"CC":"transparent",
+        left:(Math.max(0,Math.min(88,item.x-30))+"%") as `${number}%`,top:(item.y+"%") as `${number}%`,backgroundColor:item.background?item.backgroundColor+"CC":"transparent",
       }}><Text style={{color:item.color,fontSize:item.size,fontWeight:"800",fontStyle:item.italic?"italic":"normal"}}>{item.value}</Text></View>)}
       <Svg pointerEvents="none" viewBox="0 0 360 640" style={{position:"absolute",top:0,left:0,width:"100%",height:"100%"}}>
         {strokes.map((stroke,index)=><Path key={index} d={stroke.d} stroke={stroke.color} strokeWidth={stroke.width} strokeLinecap="round" strokeLinejoin="round" fill="none"/>)}
@@ -274,7 +274,7 @@ export default function CreateStoryScreen() {
       <Text className="mt-3 text-xs leading-5" style={{color:colors.muted}}>The story is pinned to Stories Globe using the coordinates you approve. The server marks this location as unverified. Do not add it when you do not want to share where the moment was captured.</Text>
     </View>
 
-    {publishing?<View className="mb-3"><View className="mb-2 flex-row justify-between"><Text className="text-xs font-semibold" style={{color:colors.rose}}>Rendering and uploading story</Text><Text className="text-xs font-bold" style={{color:colors.text}}>{progress}%</Text></View><View className="h-2 overflow-hidden rounded-full" style={{backgroundColor:colors.surface}}><View className="h-2 rounded-full" style={{width:progress+"%",backgroundColor:colors.crimson}}/></View></View>:null}
+    {publishing?<View className="mb-3"><View className="mb-2 flex-row justify-between"><Text className="text-xs font-semibold" style={{color:colors.rose}}>Rendering and uploading story</Text><Text className="text-xs font-bold" style={{color:colors.text}}>{progress}%</Text></View><View className="h-2 overflow-hidden rounded-full" style={{backgroundColor:colors.surface}}><View className="h-2 rounded-full" style={{width:(progress+"%") as `${number}%`,backgroundColor:colors.crimson}}/></View></View>:null}
     <Pressable onPress={()=>void publish()} disabled={!assets.length||!location||publishing} className="mb-8 flex-row items-center justify-center rounded-2xl px-4 py-4" style={{backgroundColor:colors.rose,opacity:!assets.length||!location||publishing?0.45:1}}>
       {publishing?<ActivityIndicator color={colors.background}/>:<MaterialCommunityIcons name="send" size={19} color={colors.background}/>}<Text className="ml-2 text-base font-bold" style={{color:colors.background}}>{publishing?"Publishing...":"Share story"}</Text>
     </Pressable>
