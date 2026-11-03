@@ -1,4 +1,5 @@
 import type * as ImagePicker from "expo-image-picker";
+import { File as ExpoFile } from "expo-file-system";
 import { api } from "./api";
 
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
@@ -39,7 +40,7 @@ function putBlob(
   blob: Blob,
   contentType: string,
   onProgress?: (percent: number) => void,
-): Promise<void> {
+): Promise<string | null> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("PUT", url, true);
@@ -52,7 +53,8 @@ function putBlob(
     };
     request.onload = () => {
       if (request.status >= 200 && request.status < 300) {
-        resolve();
+        const etag = request.getResponseHeader("ETag");
+        resolve(etag ? etag.replace(/^\"|\"$/g, "") : null);
       } else {
         reject(new Error("S3 upload failed (" + request.status + ")."));
       }
@@ -171,4 +173,209 @@ export async function uploadPickedVideo(
     await deleteUploadedMedia([created.key]).catch(() => {});
     throw error;
   }
+}
+
+
+const MAX_VIDEO_BYTES = 5 * 1024 * 1024 * 1024;
+const SINGLE_PUT_THRESHOLD = 10 * 1024 * 1024;
+const PART_SIGN_BATCH = 20;
+const PART_UPLOAD_CONCURRENCY = 4;
+
+function inferVideoType(fileName: string): string {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  switch (extension) {
+    case "mp4":
+    case "m4v": return "video/mp4";
+    case "mov": return "video/quicktime";
+    case "webm": return "video/webm";
+    default: return "";
+  }
+}
+
+export type UploadedVideo = {
+  key: string;
+  type: "video";
+};
+
+async function putSingleVideo(
+  file: ExpoFile,
+  fileName: string,
+  contentType: string,
+  size: number,
+  onProgress?: (percent: number) => void,
+): Promise<UploadedVideo> {
+  const { data: created } = await api.post<{ key: string; uploadUrl: string }>(
+    "/api/media/upload",
+    { action: "create", fileName, contentType, size },
+  );
+  if (!created?.key || !created?.uploadUrl) {
+    throw new Error("The media service did not return an upload URL.");
+  }
+
+  try {
+    await putBlob(created.uploadUrl, file.slice(0, size, contentType), contentType, onProgress);
+    onProgress?.(100);
+    return { key: created.key, type: "video" };
+  } catch (error) {
+    await deleteUploadedMedia([created.key]).catch(() => {});
+    throw error;
+  }
+}
+
+async function putMultipartVideo(
+  file: ExpoFile,
+  fileName: string,
+  contentType: string,
+  size: number,
+  onProgress?: (percent: number) => void,
+): Promise<UploadedVideo> {
+  const { data: created } = await api.post<{
+    key: string;
+    uploadId: string;
+    partSize: number;
+    partCount: number;
+  }>("/api/media/upload", {
+    action: "createMultipart",
+    fileName,
+    contentType,
+    size,
+  });
+
+  if (!created?.key || !created?.uploadId || !created.partSize || !created.partCount) {
+    throw new Error("The multipart upload could not be initialized.");
+  }
+
+  const uploadedParts: Array<{ PartNumber: number; ETag: string }> = [];
+  const loadedByPart = new Map<number, number>();
+
+  const reportProgress = () => {
+    const loaded = [...loadedByPart.values()].reduce((sum, value) => sum + value, 0);
+    onProgress?.(Math.min(99, Math.round((loaded / size) * 100)));
+  };
+
+  async function uploadPart(partNumber: number): Promise<{ PartNumber: number; ETag: string }> {
+    const start = (partNumber - 1) * created.partSize;
+    const end = Math.min(size, start + created.partSize);
+    const chunk = file.slice(start, end, contentType);
+    let lastError: unknown;
+
+    // A fresh signed URL is requested for each retry so long transfers do not
+    // become stuck behind an expired presigned URL.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const { data: signed } = await api.post<{ uploadUrl: string }>(
+          "/api/media/upload",
+          { action: "signPart", key: created.key, uploadId: created.uploadId, partNumber },
+        );
+        if (!signed?.uploadUrl) throw new Error("Unable to sign video part " + partNumber + ".");
+
+        const etag = await putBlob(
+          signed.uploadUrl,
+          chunk,
+          "",
+          (loaded) => {
+            loadedByPart.set(partNumber, Math.min(end - start, loaded));
+            reportProgress();
+          },
+        );
+        if (!etag) {
+          throw new Error("S3 did not return an ETag. Add ETag to the bucket CORS ExposeHeaders list.");
+        }
+        loadedByPart.set(partNumber, end - start);
+        reportProgress();
+        return { PartNumber: partNumber, ETag: etag };
+      } catch (error) {
+        lastError = error;
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 400 * (2 ** attempt)));
+        }
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error("Video part " + partNumber + " failed.");
+  }
+
+  async function uploadBatch(partNumbers: number[]) {
+    let cursor = 0;
+    const workers = Array.from(
+      { length: Math.min(PART_UPLOAD_CONCURRENCY, partNumbers.length) },
+      async () => {
+        while (cursor < partNumbers.length) {
+          const partNumber = partNumbers[cursor++];
+          const part = await uploadPart(partNumber);
+          uploadedParts.push(part);
+        }
+      },
+    );
+    await Promise.all(workers);
+  }
+
+  try {
+    for (let offset = 0; offset < created.partCount; offset += PART_SIGN_BATCH) {
+      const batch = Array.from(
+        { length: Math.min(PART_SIGN_BATCH, created.partCount - offset) },
+        (_, index) => offset + index + 1,
+      );
+      // Limit outstanding signed URLs and upload memory; only four parts are
+      // transferred concurrently while the rest of each batch waits.
+      await api.post("/api/media/upload", {
+        action: "signParts",
+        key: created.key,
+        uploadId: created.uploadId,
+        partNumbers: batch,
+      });
+      await uploadBatch(batch);
+    }
+
+    uploadedParts.sort((a, b) => a.PartNumber - b.PartNumber);
+    if (uploadedParts.length !== created.partCount) {
+      throw new Error("The video upload is incomplete. Please retry.");
+    }
+
+    const { data: finished } = await api.post<{ key: string }>(
+      "/api/media/upload",
+      {
+        action: "completeMultipart",
+        key: created.key,
+        uploadId: created.uploadId,
+        parts: uploadedParts,
+      },
+    );
+    if (!finished?.key) throw new Error("The video upload could not be completed.");
+    onProgress?.(100);
+    return { key: finished.key, type: "video" };
+  } catch (error) {
+    await api.post("/api/media/upload", {
+      action: "abortMultipart",
+      key: created.key,
+      uploadId: created.uploadId,
+    }).catch(() => {});
+    throw error;
+  }
+}
+
+export async function uploadPickedVideo(
+  asset: ImagePicker.ImagePickerAsset,
+  onProgress?: (percent: number) => void,
+): Promise<UploadedVideo> {
+  if (asset.type !== "video") {
+    throw new Error("Choose a video to create a clip.");
+  }
+
+  const fileName = safeFileName(asset.fileName || "zenigram-clip-" + Date.now() + ".mp4");
+  const contentType = String(asset.mimeType || inferVideoType(fileName)).toLowerCase();
+  if (!["video/mp4", "video/quicktime", "video/webm"].includes(contentType)) {
+    throw new Error("Use an MP4, MOV, or WebM video.");
+  }
+
+  const file = new ExpoFile(asset.uri);
+  const size = Number(asset.fileSize || file.size);
+  if (!Number.isSafeInteger(size) || size < 1 || size > MAX_VIDEO_BYTES) {
+    throw new Error("The selected video must be smaller than 5 GB.");
+  }
+
+  if (size > SINGLE_PUT_THRESHOLD) {
+    return putMultipartVideo(file, fileName, contentType, size, onProgress);
+  }
+  return putSingleVideo(file, fileName, contentType, size, onProgress);
 }
