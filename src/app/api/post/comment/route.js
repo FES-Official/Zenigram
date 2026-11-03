@@ -87,8 +87,8 @@ export async function GET(req) {
 
 export async function PATCH(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
     const body = await req.json();
     const postId = normalizeString(body.post);
     const commentId = normalizeString(body.commentId);
