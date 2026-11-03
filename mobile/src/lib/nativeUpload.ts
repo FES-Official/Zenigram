@@ -96,9 +96,15 @@ export async function uploadPickedImage(
     throw new Error("The media service did not return an upload URL.");
   }
 
-  await putBlob(created.uploadUrl, blob, contentType, onProgress);
-  onProgress?.(100);
-  return { key: created.key, type: "image" };
+  try {
+    await putBlob(created.uploadUrl, blob, contentType, onProgress);
+    onProgress?.(100);
+    return { key: created.key, type: "image" };
+  } catch (error) {
+    // A failed/aborted signed PUT must not leave an orphan object in the bucket.
+    await deleteUploadedMedia([created.key]).catch(() => {});
+    throw error;
+  }
 }
 
 export async function deleteUploadedMedia(keys: string[]): Promise<void> {
