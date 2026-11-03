@@ -1,11 +1,29 @@
 import { NextResponse } from "next/server";
-import { revokeMobileSession, verifyMobileAccessToken } from "@/app/lib/mobileAuth";
+import {
+  revokeMobileRefreshSession,
+  revokeMobileSession,
+  verifyMobileAccessToken,
+} from "@/app/lib/mobileAuth";
+import { normalizeString } from "@/app/lib/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request) {
   try {
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {
+      // Logout remains available to callers that only have a valid access token.
+    }
+
+    const refreshToken = normalizeString(body?.refreshToken);
+    if (refreshToken) {
+      const revoked = await revokeMobileRefreshSession(refreshToken);
+      return NextResponse.json({ success: true, revoked });
+    }
+
     const authorization = request.headers.get("authorization") || "";
     const match = authorization.match(/^Bearer\s+(.+)$/i);
     if (!match) {
