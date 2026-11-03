@@ -13,10 +13,10 @@ Audit date: 2026-11-03.
 - Added native Axios refresh-and-retry behavior using tokens stored by Expo SecureStore.
 - Connected the native Home feed to the existing ranked feed API, with Stories tray and Stories Globe entry.
 - Added a native Feed Control Center for feed mode, source weights, topic weights, and topic mute/unmute using existing preference endpoints.
-- Added native post creation with multi-photo selection, caption/topics/audience controls, signed S3 uploads, progress reporting and failed-upload cleanup.
+- Added native mixed-media post creation with up to 10 photos/videos, caption/topics/audience controls, signed S3 and multipart uploads, progress reporting, media ordering, and single/carousel/grid presentation settings (carousel styles, grid layouts and aspect ratios).
 - Added native post comments/replies and comment likes, plus feed post like/save actions.
-- Added native vertical Clips playback, likes/views/saves/interest feedback, comments/replies, a saved-clips library with visibility checks, and a single-video creator using resumable multipart S3 upload.
-- Added a native geotagged image Story composer, Story viewer/engagement, Story comments/replies, and Stories Globe map/discovery.
+- Added native vertical Clips playback, likes/views/saves/interest feedback, comments/replies and a saved-clips library with visibility checks. Replaced the single-video creator with a mixed image/video Clips Studio: multi-scene timeline, ordering, per-video trim start and segment length, photo duration, filter metadata, timed text overlays, transition selection, topics/audience and signed S3/multipart publishing. The old create-clip route points to the Studio.
+- Added a native Story Studio with up to six images, full-frame/split/collage layouts, image filters, up to eight text layers, freehand SVG drawing, adjustable story duration, caption and explicit Stories Globe location consent. The Studio snapshots the 9:16 composition as a PNG and uploads one image, matching the story API's single-media contract. Story viewer/engagement, comments/replies, and Stories Globe map/discovery remain connected.
 - Enabled bearer auth for the story, clip (including saved clips), conversation/message, profile-update and notification API families while retaining NextAuth cookie auth for the web app.
 - Added native conversation inbox and text chat with server-side read receipt updates; manual refresh is currently the fallback while persistent realtime is not connected.
 - Added native notification list/read state with accept/reject actions for incoming support requests and unblock requests.
@@ -40,7 +40,7 @@ Audit date: 2026-11-03.
 - A distributed fixed-window limiter now protects login (8 attempts per IP/identifier and 40 per IP per 15 minutes); refresh-endpoint limiting and abuse monitoring are still required before public exposure.
 - Logout-all, device session management, registration, verification, password recovery, Google/Apple native OAuth and account recovery are not implemented.
 - Messaging still needs realtime Socket.IO on a persistent host, media/drawing attachments, replies/forwarding/reactions and group workflows in the native UI.
-- Clips currently publish one selected video with a basic timeline; the full multi-asset editor (trim, text layers, filters and transitions) remains outstanding. Stories also need full editor parity and video-story playback.
+- Clips Studio stores per-segment trim/filter, text overlay and transition metadata, but uploads original media without transcoding or baking these edits into a rendered video. Native Clips playback still needs sequential mixed-media timeline rendering, transition playback and timed text/filter rendering parity. Story Studio currently composes photos only; video stories, website drawing tools/brush variants, mission and user-mention flows are not yet ported. Post editor has mixed media, layout controls and upload, but advanced per-image adjustment/export parity remains outstanding.
 - Social graph foundation is connected; remaining work includes pagination for large connection lists, end-to-end unblock-request testing and broader privacy/report controls.
 - Saved collections, Z+ security/device sessions, missions, supporter milestone banners and legal/privacy screens still need native UI and route-by-route authorization work.
 - Additional route families still use NextAuth cookie auth and have not yet been enabled for mobile bearer tokens.
@@ -49,8 +49,8 @@ Audit date: 2026-11-03.
 ## Next implementation passes
 
 1. Add tests and rate limits around the mobile auth/session contract; run root web regression and mobile TypeScript/Expo checks.
-2. Finish native post parity: sharing, media carousels, audience settings and post editing/deletion.
-3. Finish story and clip editor parity, including video stories, multi-asset timelines, filters, text overlays and location privacy.
+2. Finish native post parity: rendered photo adjustments, sharing, post editing/deletion and automated mixed-media regression tests.
+3. Finish Clips Studio playback/export parity (sequential timeline, true video trim/render, text/filter/transition rendering), add video-story editing, and port the remaining Story website features (missions, mentions, richer drawing/layout effects).
 4. Add social-graph pagination and privacy/security tests; complete saved collections, Z+ security and device-session management.
 5. Build realtime messaging/drawing/media with authenticated persistent Socket.IO hosting and offline fallback.
 6. Complete missions/progression/milestones, legal/privacy screens, accessibility and store requirements.
