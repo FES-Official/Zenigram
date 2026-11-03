@@ -222,7 +222,7 @@ export default function StoryGlobeScreen() {
       ) : (
         <View className="mb-3 rounded-3xl border p-4" style={{ borderColor: colors.line, backgroundColor: colors.panel }}>
           <View className="flex-row items-center">
-            <MaterialCommunityIcons name="map-alert-outline" size={22} color={colors.rose} />
+            <MaterialCommunityIcons name="alert-outline" size={22} color={colors.rose} />
             <Text className="ml-2 text-sm font-bold" style={{ color: colors.text }}>Android map key required</Text>
           </View>
           <Text className="mt-2 text-xs leading-5" style={{ color: colors.muted }}>
