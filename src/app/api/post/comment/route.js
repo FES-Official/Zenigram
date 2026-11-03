@@ -1,5 +1,3 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
 import {
   jsonError,
   jsonOk,
@@ -14,11 +12,12 @@ import {
   togglePostCommentLike,
 } from "@/app/lib/socialStore";
 import { emitToUsers } from "@/app/lib/socketHub";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
 
     const body = await req.json();
     const postId = normalizeString(body.post);
@@ -28,7 +27,7 @@ export async function POST(req) {
       return jsonError("Enter a comment up to 500 characters", 400);
     }
 
-    const user = await getUserById(session.user.id);
+    const user = await getUserById(userId);
     if (!user || user.accountStatus !== "active") return jsonError("User not found", 404);
 
     const post = await getPostForViewer(postId, user._id);
@@ -70,8 +69,10 @@ export async function GET(req) {
       return jsonError("Invalid post", 400, { comments: [] });
     }
 
-    const session = await getServerSession(authOptions);
-    const viewerId = session?.user?.id || "";
+    const viewerId = await getAuthenticatedUserId(req);
+    if (req.headers.get("authorization") && !viewerId) {
+      return jsonError("Unauthorized", 401, { comments: [] });
+    }
     if (viewerId && !(await getPostForViewer(postId, viewerId))) {
       return jsonError("Post is unavailable", 404, { comments: [] });
     }
@@ -93,11 +94,11 @@ export async function PATCH(req) {
     const commentId = normalizeString(body.commentId);
     if (!postId || !commentId || body.action !== "like") return jsonError("Invalid comment action", 400);
 
-    if (!(await getPostForViewer(postId, session.user.id))) {
+    if (!(await getPostForViewer(postId, userId))) {
       return jsonError("Post is unavailable", 404);
     }
 
-    const comment = await togglePostCommentLike(postId, commentId, session.user.id);
+    const comment = await togglePostCommentLike(postId, commentId, userId);
     if (!comment) return jsonError("Comment not found", 404);
     return jsonOk({ comment });
   } catch (error) {
