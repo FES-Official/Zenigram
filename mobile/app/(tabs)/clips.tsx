@@ -272,7 +272,7 @@ export default function ClipsScreen() {
           <Pressable onPress={() => router.push("/clip/saved")} className="mr-2 h-10 w-10 items-center justify-center rounded-full border" style={{ borderColor: colors.line, backgroundColor: colors.panel }} accessibilityLabel="Open saved clips">
             <MaterialCommunityIcons name="bookmark-outline" size={20} color={colors.rose} />
           </Pressable>
-          <Pressable onPress={() => router.push("/clip/create")} className="mr-2 h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: colors.wine }} accessibilityLabel="Create a clip">
+          <Pressable onPress={() => router.push("/create-clip")} className="mr-2 h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: colors.wine }} accessibilityLabel="Create a clip">
             <MaterialCommunityIcons name="plus" size={21} color={colors.rose} />
           </Pressable>
           <Pressable onPress={() => void loadClips(true)} disabled={refreshing} className="h-10 w-10 items-center justify-center rounded-full border" style={{ borderColor: colors.line, backgroundColor: colors.panel }}>
