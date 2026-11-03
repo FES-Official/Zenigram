@@ -67,7 +67,7 @@ export default function CreateStoryScreen() {
   const [drawing,setDrawing]=useState(false);
   const [brushColor,setBrushColor]=useState("#FFFFFF");
   const [brushSize,setBrushSize]=useState(5);
-  const [strokes,setStrokes]=useState<string[]>([]);
+  const [strokes,setStrokes]=useState<Array<{d:string;color:string;width:number}>>([]);
   const [activeStroke,setActiveStroke]=useState("");
   const [location,setLocation]=useState<{lat:number;lng:number}|null>(null);
   const [locationBusy,setLocationBusy]=useState(false);
@@ -142,7 +142,7 @@ export default function CreateStoryScreen() {
     const point=makePathPoint(event);setActiveStroke(current=>current+" L "+point.x.toFixed(1)+" "+point.y.toFixed(1));
   }
   function finishStroke(){
-    setStrokes(current=>activeStroke?[...current,activeStroke]:current);setActiveStroke("");
+    setStrokes(current=>activeStroke?[...current,{d:activeStroke,color:brushColor,width:brushSize}]:current);setActiveStroke("");
   }
 
   function renderStoryMedia(){
@@ -151,7 +151,7 @@ export default function CreateStoryScreen() {
     if(layout==="split"&&assets.length>=2){
       return <View className="h-full w-full flex-row">
         <View style={{width:"50%",height:"100%"}}><Image source={{uri:assets[0].uri}} resizeMode="cover" style={{width:"100%",height:"100%"}}/></View>
-        <View style={{width:"50%",height:"100%"}}>{assets.slice(1,3).map((asset,index)=><View key={asset.assetId||asset.uri} style={{height:index===0&&assets.length===2?"100%":"50%",width:"100%"}}><Image source={{uri:asset.uri}} resizeMode="cover" style={{width:"100%",height:"100%"}}/></View>)}</View>
+        <View style={{width:"50%",height:"100%"}}>{assets.slice(1).map((asset,index)=><View key={asset.assetId||asset.uri+index} style={{flex:1,width:"100%"}}><Image source={{uri:asset.uri}} resizeMode="cover" style={{width:"100%",height:"100%"}}/></View>)}</View>
       </View>;
     }
     return <View className="h-full w-full flex-row flex-wrap" style={{gap:2,backgroundColor:"#12070B"}}>
@@ -201,7 +201,7 @@ export default function CreateStoryScreen() {
         left:Math.max(0,Math.min(88,item.x-30))+"%",top:item.y+"%",backgroundColor:item.background?item.backgroundColor+"CC":"transparent",
       }}><Text style={{color:item.color,fontSize:item.size,fontWeight:"800",fontStyle:item.italic?"italic":"normal"}}>{item.value}</Text></View>)}
       <Svg pointerEvents="none" viewBox="0 0 360 640" style={{position:"absolute",top:0,left:0,width:"100%",height:"100%"}}>
-        {strokes.map((path,index)=><Path key={index} d={path} stroke={brushColor} strokeWidth={brushSize} strokeLinecap="round" strokeLinejoin="round" fill="none"/>)}
+        {strokes.map((stroke,index)=><Path key={index} d={stroke.d} stroke={stroke.color} strokeWidth={stroke.width} strokeLinecap="round" strokeLinejoin="round" fill="none"/>)}
         {activeStroke?<Path d={activeStroke} stroke={brushColor} strokeWidth={brushSize} strokeLinecap="round" strokeLinejoin="round" fill="none"/>:null}
       </Svg>
       <View pointerEvents={drawing?"auto":"none"} className="absolute inset-0" onStartShouldSetResponder={()=>drawing} onMoveShouldSetResponder={()=>drawing} onResponderGrant={startStroke} onResponderMove={moveStroke} onResponderRelease={finishStroke} onResponderTerminate={finishStroke}/>
