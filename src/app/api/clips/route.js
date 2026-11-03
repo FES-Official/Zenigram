@@ -6,7 +6,6 @@ import { filterVisibleClips, setContentAudience } from "@/app/lib/audienceStore"
 import { normalizeFeedPreferences, normalizeTopicId, rankFeedPosts } from "@/app/lib/feedRanking";
 
 function jsonError(message, status = 400) { return Response.json({ success: false, message }, { status }); }
-function viewerIdFromRequest(value) { return value ? String(value) : "guest"; }
 
 function normalizeTimeline(items, mediaCount) {
   const source = Array.isArray(items) && items.length ? items.slice(0, mediaCount) : Array.from({ length: mediaCount }, () => ({ duration: 5, trimStart: 0 }));
