@@ -1,9 +1,8 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
 import { jsonError, jsonOk, normalizeString } from "@/app/lib/api";
 import { createStory } from "@/app/lib/storyStore";
 import { listStoryGlobeFeed } from "@/app/lib/storyFeeds";
 import { verifyS3Object } from "@/app/lib/s3Storage";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 
 function parseLocation(value) {
   const location = value && typeof value === "object" ? value : {};
@@ -28,8 +27,8 @@ function parseLocation(value) {
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
 
     const body = await req.json();
     const mediaKey = normalizeString(body.mediaKey);
@@ -48,7 +47,7 @@ export async function POST(req) {
       return jsonError("Valid story latitude and longitude are required", 400);
     }
 
-    const media = await verifyS3Object(mediaKey, session.user.id);
+    const media = await verifyS3Object(mediaKey, userId);
     if (!media || !media.contentType.startsWith("image/")) {
       return jsonError("Invalid story image", 400);
     }
@@ -60,7 +59,7 @@ export async function POST(req) {
     };
 
     const result = await createStory({
-      userId: session.user.id,
+      userId: userId,
       media,
       mediaType,
       location: selectedLocation,
@@ -90,13 +89,14 @@ export async function POST(req) {
 
 export async function GET(req) {
   try {
-    const session = await getServerSession(authOptions);
+    const viewerId = await getAuthenticatedUserId(req);
+    if (req.headers.get("authorization") && !viewerId) return jsonError("Unauthorized", 401);
     const url = new URL(req.url);
     const tab = normalizeString(url.searchParams.get("tab")) || "all";
     const limit = Number(url.searchParams.get("limit") || 50);
     const cursor = normalizeString(url.searchParams.get("cursor")) || null;
     const result = await listStoryGlobeFeed({
-      viewerId: session?.user?.id || null,
+      viewerId: viewerId || null,
       tab,
       limit,
       cursor,
