@@ -11,8 +11,15 @@ Audit date: 2026-11-03.
 - Added a shared server request-auth helper that accepts NextAuth web sessions or explicit mobile bearer tokens. Invalid Authorization headers never fall back to browser cookies.
 - Enabled bearer authentication on /api/posts, /api/feed-preferences, /api/user/me, and /api/media/upload.
 - Added native Axios refresh-and-retry behavior using tokens stored by Expo SecureStore.
-- Connected the native Home feed to the existing ranked feed API.
+- Connected the native Home feed to the existing ranked feed API, with Stories tray and Stories Globe entry.
 - Added a native Feed Control Center for feed mode, source weights, topic weights, and topic mute/unmute using existing preference endpoints.
+- Added native post creation with multi-photo selection, caption/topics/audience controls, signed S3 uploads, progress reporting and failed-upload cleanup.
+- Added native post comments/replies and comment likes, plus feed post like/save actions.
+- Added native vertical Clips playback, likes/views/saves/interest feedback, comments/replies and a video creator using resumable multipart S3 upload.
+- Added a native geotagged image Story composer, Story viewer/engagement, Story comments/replies, and Stories Globe map/discovery.
+- Enabled bearer auth for the story, clip, conversation/message, profile-update and notification API families while retaining NextAuth cookie auth for the web app.
+- Added native conversation inbox and text chat with server-side read receipt updates; manual refresh is currently the fallback while persistent realtime is not connected.
+- Added native notification list/read state and profile editing including hidden-account toggle.
 - Connected profile/progression reads and native sign-out.
 - Preserved the existing Next.js web app, DynamoDB data model, and private S3 upload mechanism.
 
@@ -28,17 +35,19 @@ Audit date: 2026-11-03.
 - The Vercel web build is not a native React Native build. A preview deployment of the Next.js API does not establish that the Android/iOS app compiles.
 - A distributed fixed-window limiter now protects login (8 attempts per IP/identifier and 40 per IP per 15 minutes); refresh-endpoint limiting and abuse monitoring are still required before public exposure.
 - Logout-all, device session management, registration, verification, password recovery, Google/Apple native OAuth and account recovery are not implemented.
-- Clips, story editor/viewer/Globe, native video playback, native camera/gallery, publishing, likes/comments/shares/saves, messaging/drawing, Socket.IO realtime, notifications, search, full profile editing, hidden/block controls, Z+ security, collections, missions and supporter banners are not yet ported/connected.
+- Messaging still needs realtime Socket.IO on a persistent host, media/drawing attachments, replies/forwarding/reactions and group workflows in the native UI.
+- Clips need the full multi-asset editor (timeline, trim, text layers, filters and transitions), while Stories need full editor parity and video-story playback.
+- Social graph follow/unfollow, block/unblock and unblock-request workflows, complete account privacy controls, search, saved collections, Z+ security/device sessions, missions, supporter milestone banners and legal/privacy screens still need native UI and route-by-route authorization work.
 - Additional route families still use NextAuth cookie auth and have not yet been enabled for mobile bearer tokens.
 - No automated parity, security, accessibility, performance or end-to-end device tests have been run yet.
 
 ## Next implementation passes
 
 1. Add tests and rate limits around the mobile auth/session contract; run root web regression and mobile TypeScript/Expo checks.
-2. Complete native posts (likes, comments, saves, share and audience controls) and media upload progress/cancellation.
-3. Connect stories, then native clips/video playback and multipart upload.
-4. Connect profiles, social graph, privacy/blocking, search, notifications and saved collections.
-5. Build realtime messaging/drawing with authenticated persistent Socket.IO hosting and offline fallback.
+2. Finish native post parity: sharing, media carousels, audience settings and post editing/deletion.
+3. Finish story and clip editor parity, including video stories, multi-asset timelines, filters, text overlays and location privacy.
+4. Complete social graph, block/unblock, search, saved collections, Z+ security and device-session management.
+5. Build realtime messaging/drawing/media with authenticated persistent Socket.IO hosting and offline fallback.
 6. Complete missions/progression/milestones, legal/privacy screens, accessibility and store requirements.
 
 ## Release gate
