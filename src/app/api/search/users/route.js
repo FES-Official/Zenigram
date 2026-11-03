@@ -1,4 +1,4 @@
-import { escapeRegex, jsonError, jsonOk, normalizeString } from "@/app/lib/api";
+import { jsonError, jsonOk, normalizeString } from "@/app/lib/api";
 import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { getUserRelations, searchUsers } from "@/app/lib/socialStore";
 
@@ -26,7 +26,9 @@ export async function GET(req) {
         .map((user) => ({
           _id: user._id,
           username: user.username,
-          profilePic: user.profilePic,
+          fullname: user.fullname || "",
+          profilePic: user.profilePic || "",
+          ishidden: Boolean(user.ishidden),
         })),
     });
   } catch (error) {
