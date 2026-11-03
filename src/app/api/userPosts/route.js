@@ -23,7 +23,6 @@ export async function POST(req) {
       : await getUserByUsername(username);
     if (!user) return jsonError("User not found", 404);
 
-    const viewerId = await getAuthenticatedUserId(req);
     const [relations, viewerRelations] = await Promise.all([
       getUserRelations(user._id),
       viewerId
