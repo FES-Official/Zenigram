@@ -21,12 +21,12 @@ function normalizeTimeline(items, mediaCount) {
 
 export async function GET(req) {
   try {
-    const viewerId = await getAuthenticatedUserId(req);
-    if (req.headers.get("authorization") && !viewerId) return jsonError("Unauthorized", 401);
+    const authenticatedUserId = await getAuthenticatedUserId(req);
+    if (req.headers.get("authorization") && !authenticatedUserId) return jsonError("Unauthorized", 401);
     const limitValue = new URL(req.url).searchParams.get("limit");
     const rawLimit = limitValue === null ? 80 : Number(limitValue);
     const limit = Number.isSafeInteger(rawLimit) ? Math.min(80, Math.max(1, rawLimit)) : 80;
-    const viewerId = viewerIdFromRequest(viewerId);
+    const viewerId = authenticatedUserId || "guest";
     const guestRelations = {
       blockedUsers: [],
       blockedByUsers: [],
@@ -36,7 +36,7 @@ export async function GET(req) {
       savedClips: [],
     };
 
-    const [user, relations] = session?.user?.id
+    const [user, relations] = authenticatedUserId
       ? await Promise.all([
           getUserById(viewerId),
           getUserRelations(viewerId),
