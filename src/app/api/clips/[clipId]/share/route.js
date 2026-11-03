@@ -7,6 +7,7 @@ import {
   updateClip,
 } from "@/app/lib/socialStore";
 import { emitToUsers } from "@/app/lib/socketHub";
+import { canViewContent } from "@/app/lib/audienceStore";
 import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 
 function jsonError(message, status = 400) {
@@ -44,7 +45,17 @@ export async function POST(req, { params }) {
       creator?.ishidden &&
       creator._id !== recipientId &&
       !recipientRelations.supporting.includes(creator._id);
-    if (blocked || privateWithoutAccess || creator?.accountStatus !== "active") {
+    const [senderCanView, recipientCanView] = await Promise.all([
+      canViewContent(clip, sender._id, creator, senderRelations),
+      canViewContent(clip, recipient._id, creator, recipientRelations),
+    ]);
+    if (
+      blocked ||
+      privateWithoutAccess ||
+      creator?.accountStatus !== "active" ||
+      !senderCanView ||
+      !recipientCanView
+    ) {
       return jsonError("This clip cannot be shared with that user", 403);
     }
 
