@@ -50,5 +50,7 @@ jobs:
         run: npm ci
       - name: TypeScript check
         run: npm run typecheck
-      - name: Bundle iOS and Android
-        run: npx expo export --platform all --output-dir dist
+      - name: Bundle iOS
+        run: npx expo export --platform ios --output-dir dist/ios
+      - name: Bundle Android
+        run: npx expo export --platform android --output-dir dist/android
