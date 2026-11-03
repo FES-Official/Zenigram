@@ -59,7 +59,10 @@ export default function CreateScreen(){
 
   function addAssets(next:ImagePicker.ImagePickerAsset[]){
     const eligible=next.filter((item):item is MediaAsset=>item.type==="image"||item.type==="video");
+    const nextCount=Math.min(MAX_MEDIA,assets.length+eligible.length);
     setAssets(current=>[...current,...eligible].slice(0,MAX_MEDIA));
+    if(nextCount>1&&presentation==="single")setPresentation("carousel");
+    if(nextCount===1)setPresentation("single");
     setError("");setNotice("");
     if(assets.length+eligible.length>MAX_MEDIA)setError("A post can contain up to 10 images and videos.");
   }
@@ -166,7 +169,11 @@ export default function CreateScreen(){
         <View className="absolute bottom-2 left-2 rounded px-1.5 py-1" style={{backgroundColor:"rgba(19,9,13,0.85)"}}><Text className="text-[9px] font-bold uppercase" style={{color:colors.rose}}>{asset.type}</Text></View>
         <View className="absolute right-2 top-2 flex-row">
           <Pressable onPress={()=>moveAsset(index,-1)} disabled={busy||index===0} className="mr-1 h-7 w-7 items-center justify-center rounded-full" style={{backgroundColor:"rgba(19,9,13,0.85)"}} accessibilityLabel="Move media earlier"><MaterialCommunityIcons name="chevron-left" size={16} color={index===0?colors.muted:"#FFFFFF"}/></Pressable>
-          <Pressable onPress={()=>setAssets(current=>current.filter((_,i)=>i!==index))} disabled={busy} className="h-7 w-7 items-center justify-center rounded-full" style={{backgroundColor:"rgba(19,9,13,0.85)"}} accessibilityLabel={"Remove media "+(index+1)}><MaterialCommunityIcons name="close" size={16} color="#FFFFFF"/></Pressable>
+          <Pressable onPress={()=>setAssets(current=>{
+            const next=current.filter((_,i)=>i!==index);
+            if(next.length<=1)setPresentation("single");
+            return next;
+          })} disabled={busy} className="h-7 w-7 items-center justify-center rounded-full" style={{backgroundColor:"rgba(19,9,13,0.85)"}} accessibilityLabel={"Remove media "+(index+1)}><MaterialCommunityIcons name="close" size={16} color="#FFFFFF"/></Pressable>
         </View>
         {index<assets.length-1?<Pressable onPress={()=>moveAsset(index,1)} disabled={busy} className="absolute bottom-2 right-2 h-7 w-7 items-center justify-center rounded-full" style={{backgroundColor:"rgba(19,9,13,0.85)"}} accessibilityLabel="Move media later"><MaterialCommunityIcons name="chevron-right" size={16} color="#FFFFFF"/></Pressable>:null}
       </View>)}</View>
