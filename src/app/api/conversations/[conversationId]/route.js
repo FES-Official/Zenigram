@@ -1,20 +1,19 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { deleteConversationForUser } from "@/app/lib/socialStore";
 import { emitToUsers } from "@/app/lib/socketHub";
 
-export async function DELETE(_req, { params }) {
+export async function DELETE(req, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { conversationId } = await params;
     const result = await deleteConversationForUser(
       conversationId,
-      session.user.id,
+      userId,
     );
     if (!result) {
       return NextResponse.json(
@@ -24,11 +23,11 @@ export async function DELETE(_req, { params }) {
     }
 
     emitToUsers(
-      result.purged ? result.conversation.participantIds : [session.user.id],
+      result.purged ? result.conversation.participantIds : [userId],
       "conversation:delete",
       {
         conversationId,
-        userId: session.user.id,
+        userId: userId,
         purged: result.purged,
       },
     );

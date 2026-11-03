@@ -1,7 +1,6 @@
-import { getServerSession } from "next-auth";
 import { cookies } from "next/headers";
-import { authOptions } from "@/app/lib/auth";
 import { verifyS3Object } from "@/app/lib/s3Storage";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { createClip, getUserById, getUserRelations, listClips } from "@/app/lib/socialStore";
 import { filterVisibleClips, setContentAudience } from "@/app/lib/audienceStore";
 import { normalizeFeedPreferences, normalizeTopicId, rankFeedPosts } from "@/app/lib/feedRanking";
@@ -21,11 +20,12 @@ function normalizeTimeline(items, mediaCount) {
 
 export async function GET(req) {
   try {
-    const session = await getServerSession(authOptions);
+    const authenticatedUserId = await getAuthenticatedUserId(req);
+    if (req.headers.get("authorization") && !authenticatedUserId) return jsonError("Unauthorized", 401);
     const limitValue = new URL(req.url).searchParams.get("limit");
     const rawLimit = limitValue === null ? 80 : Number(limitValue);
     const limit = Number.isSafeInteger(rawLimit) ? Math.min(80, Math.max(1, rawLimit)) : 80;
-    const viewerId = session?.user?.id ? String(session.user.id) : "guest";
+    const viewerId = authenticatedUserId || "guest";
     const guestRelations = {
       blockedUsers: [],
       blockedByUsers: [],
@@ -35,7 +35,7 @@ export async function GET(req) {
       savedClips: [],
     };
 
-    const [user, relations] = session?.user?.id
+    const [user, relations] = authenticatedUserId
       ? await Promise.all([
           getUserById(viewerId),
           getUserRelations(viewerId),
@@ -65,8 +65,8 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
     const body = await req.json();
     const caption = String(body.caption || "").trim().slice(0, 500);
     const topics = [...new Set(
@@ -86,8 +86,8 @@ export async function POST(req) {
     if (!Number.isFinite(duration) || duration <= 0 || duration > 120) return jsonError("Clips must be between 1 second and 2 minutes", 400);
 
     const [user, uploadedItems] = await Promise.all([
-      getUserById(session.user.id),
-      Promise.all(requestedItems.map((item) => verifyS3Object(item.key, session.user.id))),
+      getUserById(userId),
+      Promise.all(requestedItems.map((item) => verifyS3Object(item.key, userId))),
     ]);
     if (!user || uploadedItems.some((item) => !item)) return jsonError("Clip upload could not be verified", 400);
 

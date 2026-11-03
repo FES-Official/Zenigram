@@ -1,0 +1,56 @@
+name: Zenigram Mobile CI
+
+on:
+  push:
+    branches:
+      - mobile/ios-android-conversion
+    paths:
+      - "mobile/**"
+      - "src/app/api/mobile/**"
+      - "src/app/lib/mobileAuth.js"
+      - "src/app/lib/requestAuth.js"
+      - "src/app/api/posts/**"
+      - "src/app/api/feed-preferences/**"
+      - "src/app/api/user/me/**"
+      - "src/app/api/media/upload/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "mobile/**"
+      - "src/app/api/mobile/**"
+      - "src/app/lib/mobileAuth.js"
+      - "src/app/lib/requestAuth.js"
+      - "src/app/api/posts/**"
+      - "src/app/api/feed-preferences/**"
+      - "src/app/api/user/me/**"
+      - "src/app/api/media/upload/**"
+
+permissions:
+  contents: read
+
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Regenerate dependency lock metadata
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Install mobile dependencies
+        run: npm ci
+      - name: TypeScript check
+        run: npm run typecheck
+      - name: Bundle iOS
+        run: npx expo export --platform ios --output-dir dist/ios
+      - name: Bundle Android
+        run: npx expo export --platform android --output-dir dist/android

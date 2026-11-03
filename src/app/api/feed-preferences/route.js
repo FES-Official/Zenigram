@@ -1,29 +1,28 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { getUserById, updateUser } from "@/app/lib/socialStore";
 import {
   applyFeedFeedback,
   normalizeFeedPreferences,
 } from "@/app/lib/feedRanking";
 
-async function getAuthenticatedUser() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+async function getAuthenticatedUser(request) {
+  const userId = await getAuthenticatedUserId(request);
+  if (!userId) {
     return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   }
 
-  const user = await getUserById(session.user.id);
+  const user = await getUserById(userId);
   if (!user) {
     return { error: NextResponse.json({ error: "User not found" }, { status: 404 }) };
   }
 
-  return { user, userId: String(session.user.id) };
+  return { user, userId: String(userId) };
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const auth = await getAuthenticatedUser();
+    const auth = await getAuthenticatedUser(request);
     if (auth.error) return auth.error;
 
     return NextResponse.json({
@@ -37,7 +36,7 @@ export async function GET() {
 
 export async function PUT(request) {
   try {
-    const auth = await getAuthenticatedUser();
+    const auth = await getAuthenticatedUser(request);
     if (auth.error) return auth.error;
 
     const body = await request.json();
@@ -56,7 +55,7 @@ export async function PUT(request) {
 
 export async function PATCH(request) {
   try {
-    const auth = await getAuthenticatedUser();
+    const auth = await getAuthenticatedUser(request);
     if (auth.error) return auth.error;
 
     const body = await request.json();

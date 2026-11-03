@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { jsonError, jsonOk, normalizeString } from "@/app/lib/api";
 import { deleteS3Objects, verifyS3Object } from "@/app/lib/s3Storage";
 import {
@@ -15,17 +14,22 @@ import {
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
 
     const data = await req.json();
+    const currentUser = await getUserById(userId);
+    if (!currentUser) return jsonError("User not found", 404);
+
     const username = normalizeString(data.username).toLowerCase();
     const bio = normalizeString(data.bio);
     const website = normalizeString(data.website);
-    const gender = normalizeString(data.gender);
-    const mobile = normalizeString(data.mobile);
-    const currentUser = await getUserById(session.user.id);
-    if (!currentUser) return jsonError("User not found", 404);
+    const gender = data.gender === undefined
+      ? String(currentUser.gender || "")
+      : normalizeString(data.gender);
+    const mobile = data.mobile === undefined
+      ? String(currentUser.mobile || "")
+      : normalizeString(data.mobile);
 
     if (!/^[a-z0-9._]{3,24}$/.test(username)) {
       return jsonError("Enter a valid username", 400);
@@ -41,7 +45,7 @@ export async function POST(req) {
     if (
       mobileChanged &&
       mobile &&
-      !(await hasVerifiedPhoneUpdate(session.user.id, mobile))
+      !(await hasVerifiedPhoneUpdate(userId, mobile))
     ) {
       return jsonError("Verify your new phone number before saving it.", 403);
     }
@@ -55,12 +59,12 @@ export async function POST(req) {
     }
 
     const duplicate = await getUserByUsername(username);
-    if (duplicate && duplicate._id !== session.user.id) {
+    if (duplicate && duplicate._id !== userId) {
       return jsonError("Username is already taken", 409);
     }
 
     if (data.profilePicKey) {
-      const uploaded = await verifyS3Object(data.profilePicKey, session.user.id);
+      const uploaded = await verifyS3Object(data.profilePicKey, userId);
       if (!uploaded?.contentType.startsWith("image/")) {
         return jsonError("Invalid profile image", 400);
       }
@@ -69,13 +73,13 @@ export async function POST(req) {
     }
 
     if (mobileChanged && mobile) {
-      const consumed = await consumeVerifiedPhoneUpdate(session.user.id, mobile);
+      const consumed = await consumeVerifiedPhoneUpdate(userId, mobile);
       if (!consumed) {
         return jsonError("Your phone verification has expired. Please verify the number again.", 403);
       }
     }
 
-    const user = await updateUser(session.user.id, {
+    const user = await updateUser(userId, {
       username,
       bio,
       website,

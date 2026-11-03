@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import {
   createConversation,
   createCloseOnesGroup,
@@ -10,15 +9,15 @@ import {
   listConversations,
 } from "@/app/lib/socialStore";
 
-export async function GET() {
+export async function GET(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const [conversations, relations] = await Promise.all([
-      listConversations(session.user.id),
-      getUserRelations(session.user.id),
+      listConversations(userId),
+      getUserRelations(userId),
     ]);
     const closeOnes = await Promise.all((relations.closeOnes || []).map(getUserById));
     return NextResponse.json({
@@ -39,14 +38,14 @@ export async function GET() {
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { recipientId, eventId, memberIds, groupName } = await req.json();
     if (Array.isArray(memberIds)) {
       const conversation = await createCloseOnesGroup(
-        session.user.id,
+        userId,
         memberIds,
         groupName,
       );
@@ -58,12 +57,12 @@ export async function POST(req) {
       }
       return NextResponse.json({ conversation }, { status: 201 });
     }
-    if (!recipientId || recipientId === session.user.id) {
+    if (!recipientId || recipientId === userId) {
       return NextResponse.json({ error: "Invalid recipient" }, { status: 400 });
     }
     const [recipient, relationship] = await Promise.all([
       getUserById(recipientId),
-      getBlockRelationship(session.user.id, recipientId),
+      getBlockRelationship(userId, recipientId),
     ]);
     if (!recipient || recipient.accountStatus !== "active") {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -75,7 +74,7 @@ export async function POST(req) {
       );
     }
     const conversation = await createConversation(
-      session.user.id,
+      userId,
       recipientId,
       eventId || null,
     );
