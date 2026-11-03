@@ -6,9 +6,31 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "ios": {"supportsTablet": true, "bundleIdentifier": "com.fesofficial.zenigram"},
-    "android": {"package": "com.fesofficial.zenigram", "adaptiveIcon": {"backgroundColor": "#13090D"}},
-    "plugins": ["expo-router", "expo-secure-store", "expo-font"],
-    "experiments": {"typedRoutes": true}
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fesofficial.zenigram"
+    },
+    "android": {
+      "package": "com.fesofficial.zenigram",
+      "adaptiveIcon": {
+        "backgroundColor": "#13090D"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Zenigram needs access to your photos so you can share posts and stories.",
+          "cameraPermission": "Zenigram uses your camera to create posts, stories, and clips.",
+          "microphonePermission": "Zenigram uses your microphone when you record videos."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }
