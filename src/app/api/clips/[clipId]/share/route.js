@@ -1,5 +1,3 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
 import {
   createConversation,
   createMessage,
@@ -9,6 +7,7 @@ import {
   updateClip,
 } from "@/app/lib/socialStore";
 import { emitToUsers } from "@/app/lib/socketHub";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 
 function jsonError(message, status = 400) {
   return Response.json({ success: false, message }, { status });
@@ -16,15 +15,15 @@ function jsonError(message, status = 400) {
 
 export async function POST(req, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
     const { clipId } = await params;
     const { recipientId } = await req.json();
-    if (!recipientId || recipientId === session.user.id) return jsonError("Choose a valid recipient", 400);
+    if (!recipientId || recipientId === userId) return jsonError("Choose a valid recipient", 400);
 
     const [clip, sender, recipient] = await Promise.all([
       getClip(clipId),
-      getUserById(session.user.id),
+      getUserById(userId),
       getUserById(recipientId),
     ]);
     if (!clip) return jsonError("Clip not found", 404);
