@@ -7,9 +7,8 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "crypto";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
 import { jsonError, jsonOk, normalizeString } from "@/app/lib/api";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import {
   getPublicS3Url,
   getS3Client,
@@ -73,8 +72,8 @@ function validatePartNumbers(values) {
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
     const config = getS3Config();
     if (!config) return jsonError("AWS media storage is not configured", 503);
 
@@ -92,10 +91,10 @@ export async function POST(req) {
 
     if (action === "create") {
       const { fileName, contentType, size } = validateNewUpload(body);
-      const key = `media/${session.user.id}/${mediaFolder(contentType)}/${Date.now()}-${randomUUID()}-${fileName}`;
+      const key = `media/${userId}/${mediaFolder(contentType)}/${Date.now()}-${randomUUID()}-${fileName}`;
       const uploadUrl = await getSignedUrl(s3, new PutObjectCommand({
         Bucket: config.bucket, Key: key, ContentType: contentType, ContentLength: size,
-        Metadata: { owner: session.user.id },
+        Metadata: { owner: userId },
       }), { expiresIn: 300 });
       return jsonOk({ key, uploadUrl, objectUrl: getPublicS3Url(key) });
     }
@@ -104,17 +103,17 @@ export async function POST(req) {
       const { fileName, contentType, size } = validateNewUpload(body);
       if (!contentType.startsWith("video/")) return jsonError("Multipart upload is reserved for videos", 400);
       const partSize = Math.max(MIN_PART_SIZE, Math.min(DEFAULT_PART_SIZE, Math.ceil(size / MAX_PARTS)));
-      const key = `media/${session.user.id}/videos/${Date.now()}-${randomUUID()}-${fileName}`;
+      const key = `media/${userId}/videos/${Date.now()}-${randomUUID()}-${fileName}`;
       const created = await s3.send(new CreateMultipartUploadCommand({
         Bucket: config.bucket, Key: key, ContentType: contentType,
-        Metadata: { owner: session.user.id },
+        Metadata: { owner: userId },
       }));
       return jsonOk({ key, uploadId: created.UploadId, partSize, partCount: Math.ceil(size / partSize), objectUrl: getPublicS3Url(key) });
     }
 
     const key = normalizeString(body.key);
     const uploadId = normalizeString(body.uploadId);
-    if (!key || !uploadId || !isOwnedMediaKey(key, session.user.id)) return jsonError("Invalid multipart upload", 400);
+    if (!key || !uploadId || !isOwnedMediaKey(key, userId)) return jsonError("Invalid multipart upload", 400);
 
     if (action === "signParts") {
       let partNumbers;
