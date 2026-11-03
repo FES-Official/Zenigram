@@ -1,7 +1,7 @@
 # Mobile Conversion Status
 
 Work branch: mobile/social-graph.
-Audit date: 2026-11-03.
+Audit date: 2026-11-04.
 
 ## Completed in this branch
 
@@ -15,8 +15,8 @@ Audit date: 2026-11-03.
 - Added a native Feed Control Center for feed mode, source weights, topic weights, and topic mute/unmute using existing preference endpoints.
 - Added native mixed-media post creation with up to 10 photos/videos, caption/topics/audience controls, signed S3 and multipart uploads, progress reporting, media ordering, and single/carousel/grid presentation settings (carousel styles, grid layouts and aspect ratios).
 - Added native post comments/replies and comment likes, plus feed post like/save actions.
-- Added native vertical Clips playback, likes/views/saves/interest feedback, comments/replies and a saved-clips library with visibility checks. Replaced the single-video creator with a mixed image/video Clips Studio: multi-scene timeline, ordering, per-video trim start and segment length, photo duration, filter metadata, timed text overlays, transition selection, topics/audience and signed S3/multipart publishing. The old create-clip route points to the Studio.
-- Added a native Story Studio with up to six images, full-frame/split/collage layouts, image filters, up to eight text layers, freehand SVG drawing, adjustable story duration, caption and explicit Stories Globe location consent. The Studio snapshots the 9:16 composition as a PNG and uploads one image, matching the story API's single-media contract. Story viewer/engagement, comments/replies, and Stories Globe map/discovery remain connected.
+- Added native vertical Clips playback, likes/views/saves/interest feedback, comments/replies and a saved-clips library with visibility checks. Replaced the single-video creator with a mixed image/video Clips Studio: multi-scene timeline, ordering, per-video trim start and segment length, photo duration, filter metadata, timed text overlays, transition selection, topics/audience and signed S3/multipart publishing. The old create-clip route points to the Studio. The selected video preview now seeks to the chosen trim start and loops only the selected segment, so trim controls can be reviewed before publishing.
+- Added a native Story Studio with up to six images, website-inspired full-frame, split, duo, hero, columns, grid, mosaic and six-image layouts, black-cherry/crimson/burgundy background presets, adjustable collage gaps and corner radii, image filters, up to eight text layers, freehand SVG drawing, adjustable story duration, caption and explicit Stories Globe location consent. The Studio snapshots the 9:16 composition as a PNG and uploads one image, matching the story API's single-media contract. Story viewer/engagement, comments/replies, and Stories Globe map/discovery remain connected.
 - Enabled bearer auth for the story, clip (including saved clips), conversation/message, profile-update and notification API families while retaining NextAuth cookie auth for the web app.
 - Added native conversation inbox and text chat with server-side read receipt updates; manual refresh is currently the fallback while persistent realtime is not connected.
 - Added native notification list/read state with accept/reject actions for incoming support requests and unblock requests.
@@ -40,7 +40,7 @@ Audit date: 2026-11-03.
 - A distributed fixed-window limiter now protects login (8 attempts per IP/identifier and 40 per IP per 15 minutes); refresh-endpoint limiting and abuse monitoring are still required before public exposure.
 - Logout-all, device session management, registration, verification, password recovery, Google/Apple native OAuth and account recovery are not implemented.
 - Messaging still needs realtime Socket.IO on a persistent host, media/drawing attachments, replies/forwarding/reactions and group workflows in the native UI.
-- Clips Studio stores per-segment trim/filter, text overlay and transition metadata, but uploads original media without transcoding or baking these edits into a rendered video. Native Clips playback still needs sequential mixed-media timeline rendering, transition playback and timed text/filter rendering parity. Story Studio currently composes photos only; video stories, website drawing tools/brush variants, mission and user-mention flows are not yet ported. Post editor has mixed media, layout controls and upload, but advanced per-image adjustment/export parity remains outstanding.
+- Clips Studio stores per-segment trim/filter, text overlay and transition metadata, but uploads original media without transcoding or baking these edits into a rendered video. Native Clips playback still needs sequential mixed-media timeline rendering, transition playback and timed text/filter rendering parity. Story Studio currently composes photos only; video stories, website image dragging/individual image transforms, mission and user-mention flows are not yet ported. Post editor has mixed media, layout controls and upload, but advanced per-image adjustment/export parity remains outstanding.
 - Social graph foundation is connected; remaining work includes pagination for large connection lists, end-to-end unblock-request testing and broader privacy/report controls.
 - Saved collections, Z+ security/device sessions, missions, supporter milestone banners and legal/privacy screens still need native UI and route-by-route authorization work.
 - Additional route families still use NextAuth cookie auth and have not yet been enabled for mobile bearer tokens.
