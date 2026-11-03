@@ -93,9 +93,28 @@ export default function CreateClipScreen() {
   const player=useVideoPlayer(null,p=>{p.loop=false;p.muted=true;});
 
   useEffect(()=>{
-    if(selected?.type==="video"){player.replace(selected.uri);player.play();}
-    else{player.pause();player.replace(null);}
-  },[player,selected?.id,selected?.type,selected?.uri]);
+    if(selected?.type!=="video"){
+      player.pause();
+      player.replace(null);
+      return;
+    }
+
+    // Preview the selected source interval, not the entire original video.
+    player.replace(selected.uri);
+    player.timeUpdateEventInterval=0.12;
+    player.seekTo(selected.trimStart);
+    player.play();
+
+    const subscription=player.addListener("timeUpdate",event=>{
+      const segmentEnd=selected.trimStart+selected.duration;
+      if(event.currentTime>=segmentEnd){
+        player.pause();
+        player.seekTo(selected.trimStart);
+      }
+    });
+
+    return ()=>subscription.remove();
+  },[player,selected?.id,selected?.type,selected?.uri,selected?.trimStart,selected?.duration]);
 
   function addAssets(chosen:ImagePicker.ImagePickerAsset[]) {
     const remaining=Math.max(0,MAX_ITEMS-assets.length);
@@ -230,7 +249,7 @@ export default function CreateClipScreen() {
       {selected.type==="video"?<>
         <RangeControl label="Trim start" value={selected.trimStart} min={0} max={Math.max(0,selected.sourceDuration-MIN_SEGMENT)} step={0.1} suffix="s" onChange={value=>updateAsset(selected.id,{trimStart:value,duration:Math.min(selected.duration,Math.max(MIN_SEGMENT,selected.sourceDuration-value))})}/>
         <RangeControl label="Clip length" value={selected.duration} min={MIN_SEGMENT} max={Math.max(MIN_SEGMENT,selected.sourceDuration-selected.trimStart)} step={0.1} suffix="s" onChange={value=>updateAsset(selected.id,{duration:value})}/>
-        <Text className="mt-1 text-[11px] leading-5" style={{color:colors.muted}}>Selected source interval: {selected.trimStart.toFixed(1)}s – {(selected.trimStart+selected.duration).toFixed(1)}s. The uploaded source file remains unchanged; trim points are stored in timeline metadata.</Text>
+        <Text className="mt-1 text-[11px] leading-5" style={{color:colors.muted}}>Preview loops only the selected source interval: {selected.trimStart.toFixed(1)}s – {(selected.trimStart+selected.duration).toFixed(1)}s. The original upload is preserved; the server stores trim points as non-destructive timeline metadata.</Text>
       </>:<RangeControl label="Photo duration" value={selected.duration} min={0.5} max={15} step={0.5} suffix="s" onChange={value=>updateAsset(selected.id,{duration:value})}/>}
       <Text className="mb-2 mt-5 text-xs font-bold uppercase tracking-widest" style={{color:colors.muted}}>Filter</Text>
       <View className="flex-row flex-wrap">{FILTERS.map(item=><Pressable key={item.id} onPress={()=>updateAsset(selected.id,{filter:item.id})} disabled={busy} className="mb-2 mr-2 rounded-xl border px-3 py-2" style={{borderColor:selected.filter===item.id?colors.rose:colors.line,backgroundColor:selected.filter===item.id?colors.wine:colors.surface}}><Text className="text-xs font-semibold" style={{color:selected.filter===item.id?colors.rose:colors.muted}}>{item.label}</Text></Pressable>)}</View>
