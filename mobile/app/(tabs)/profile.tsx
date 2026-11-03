@@ -135,6 +135,22 @@ export default function ProfileScreen() {
               </View>
               <MaterialCommunityIcons name="chevron-right" size={19} color={colors.muted} />
             </Pressable>
+
+            <Pressable onPress={() => router.push("/discover")} className="mt-3 flex-row items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: colors.line }}>
+              <View className="flex-row items-center">
+                <MaterialCommunityIcons name="account-search-outline" size={19} color={colors.rose} />
+                <Text className="ml-2 text-sm font-semibold" style={{ color: colors.text }}>Discover creators</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={19} color={colors.muted} />
+            </Pressable>
+
+            <Pressable onPress={() => router.push("/privacy/blocked")} className="mt-3 flex-row items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: colors.line }}>
+              <View className="flex-row items-center">
+                <MaterialCommunityIcons name="account-cancel-outline" size={19} color={colors.rose} />
+                <Text className="ml-2 text-sm font-semibold" style={{ color: colors.text }}>Blocked accounts</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={19} color={colors.muted} />
+            </Pressable>
           </View>
         </>
       )}
