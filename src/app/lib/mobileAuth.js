@@ -33,7 +33,7 @@ export async function consumeMobileLoginRateLimit(request, identifier) {
   const digest = value =>
     createHmac("sha256", signingSecret()).update(value, "utf8").digest("hex");
   const ipHash = digest(ip);
-  const identityHash = digest(ip + "\\u0000" + String(identifier || "").toLowerCase());
+  const identityHash = digest(ip + String.fromCharCode(0) + String(identifier || "").toLowerCase());
   const expiry = (windowId + 1) * windowSeconds;
   const update = (key, limit) => ({
     Update: {
@@ -399,6 +399,44 @@ export async function revokeMobileSession(sessionId, userId) {
     if (error?.name === "TransactionCanceledException" || error?.name === "ConditionalCheckFailedException") return false;
     throw error;
   }
+}
+
+
+
+export async function revokeMobileRefreshSession(refreshToken) {
+  if (typeof refreshToken !== "string" || refreshToken.length > 256) return false;
+  const separator = refreshToken.indexOf(".");
+  if (separator < 1) return false;
+
+  const sessionId = refreshToken.slice(0, separator);
+  const refreshSecret = refreshToken.slice(separator + 1);
+  if (!/^[a-f0-9]{32}$/.test(sessionId) || refreshSecret.length < 40) return false;
+
+  const session = await getSessionRecord(sessionId);
+  if (
+    !session ||
+    !equalHash(session.refreshTokenHash, hashRefreshSecret(refreshSecret))
+  ) return false;
+
+  // Revoking the family invalidates all access and refresh tokens issued for
+  // this device, even when the short-lived access token itself has expired.
+  try {
+    await database().send(new UpdateCommand({
+      TableName: tableName(),
+      Key: familyKey(session.familyId),
+      UpdateExpression: "SET revokedAt = :now",
+      ConditionExpression: "attribute_exists(PK) AND attribute_not_exists(revokedAt)",
+      ExpressionAttributeValues: { ":now": nowSeconds() },
+    }));
+  } catch (error) {
+    if (error?.name === "ConditionalCheckFailedException") {
+      const family = await getFamilyRecord(session.familyId);
+      return Boolean(family?.revokedAt);
+    }
+    throw error;
+  }
+
+  return true;
 }
 
 export async function getBearerMobileUserId(request) {
