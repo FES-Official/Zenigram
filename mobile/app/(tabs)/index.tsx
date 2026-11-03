@@ -47,11 +47,13 @@ function PostCard({
   busy,
   onLike,
   onSave,
+  onComment,
 }: {
   post: FeedPost;
   busy: boolean;
   onLike: () => void;
   onSave: () => void;
+  onComment: () => void;
 }) {
   const media = post.mediaItems?.[0];
   const mediaUrl = media?.url || post.mediaUrl || "";
@@ -112,10 +114,15 @@ function PostCard({
             {Number(post.likesCount || 0).toLocaleString()}
           </Text>
         </Pressable>
-        <View className="flex-row items-center">
+        <Pressable
+          onPress={onComment}
+          accessibilityRole="button"
+          accessibilityLabel="Open comments"
+          className="flex-row items-center"
+        >
           <MaterialCommunityIcons name="comment-outline" size={19} color={colors.muted} />
           <Text className="ml-2 text-xs" style={{ color: colors.muted }}>{Number(post.commentsCount || 0).toLocaleString()}</Text>
-        </View>
+        </Pressable>
         <View className="flex-row items-center">
           <MaterialCommunityIcons name="share-outline" size={19} color={colors.muted} />
           <Text className="ml-2 text-xs" style={{ color: colors.muted }}>{Number(post.shareCount || 0).toLocaleString()}</Text>
@@ -278,6 +285,7 @@ export default function FeedScreen() {
             busy={busyPostId === item._id}
             onLike={() => void toggleLike(item)}
             onSave={() => void toggleSave(item)}
+            onComment={() => router.push("/post/" + encodeURIComponent(item._id) + "/comments")}
           />
         )}
         ListHeaderComponent={header}
