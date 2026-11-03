@@ -63,7 +63,7 @@ function RangeControl({label,value,min,max,step=0.1,suffix="",onChange}:{
   return <View className="mt-3">
     <View className="mb-2 flex-row justify-between"><Text className="text-xs font-semibold" style={{color:colors.muted}}>{label}</Text><Text className="text-xs font-bold" style={{color:colors.rose}}>{safe.toFixed(step<1?1:0)}{suffix}</Text></View>
     <View onLayout={e=>setWidth(e.nativeEvent.layout.width)} onStartShouldSetResponder={()=>true} onMoveShouldSetResponder={()=>true} onResponderGrant={update} onResponderMove={update} accessibilityRole="adjustable" accessibilityLabel={label} style={{height:28,justifyContent:"center"}}>
-      <View className="h-2 overflow-hidden rounded-full" style={{backgroundColor:colors.surface}}><View className="h-2 rounded-full" style={{width:pct+"%",backgroundColor:colors.crimson}}/></View>
+      <View className="h-2 overflow-hidden rounded-full" style={{backgroundColor:colors.surface}}><View className="h-2 rounded-full" style={{width:(pct+"%") as `${number}%`,backgroundColor:colors.crimson}}/></View>
       <View className="absolute h-5 w-5 rounded-full border-2" style={{left:Math.max(0,Math.min(width-20,pct/100*width-10)),backgroundColor:colors.rose,borderColor:colors.background}}/>
     </View>
   </View>;
@@ -197,7 +197,7 @@ export default function CreateClipScreen() {
       {selected.type==="video"?<VideoView player={player} contentFit="contain" nativeControls style={{width:"100%",height:"100%"}}/>:<Image source={{uri:selected.uri}} resizeMode="contain" className="h-full w-full"/>}
       <View pointerEvents="none" className="absolute inset-0" style={{backgroundColor:filter.tint}}/>
       {visibleText.map(layer=><View key={layer.id} pointerEvents="none" className="absolute max-w-[90%] rounded-lg px-2 py-1" style={{
-        left:layer.x+"%",top:layer.y+"%",backgroundColor:layer.background?layer.backgroundColor+"CC":"transparent",
+        left:(layer.x+"%") as `${number}%`,top:(layer.y+"%") as `${number}%`,backgroundColor:layer.background?layer.backgroundColor+"CC":"transparent",
         borderWidth:layer.showBorder?layer.borderWidth:0,borderColor:layer.borderColor,transform:[{rotate:layer.rotation+"deg"}],
       }}>
         <Text style={{color:layer.color,fontSize:layer.size,fontFamily:layer.fontFamily,fontWeight:layer.fontWeight===700?"700":"400",
@@ -277,7 +277,7 @@ export default function CreateClipScreen() {
       <Switch value={closeOnesOnly} onValueChange={setCloseOnesOnly} disabled={busy} trackColor={{false:colors.surface,true:colors.crimson}} thumbColor={closeOnesOnly?colors.rose:colors.muted}/>
     </View>
 
-    {busy?<View className="mb-3"><View className="mb-2 flex-row justify-between"><Text className="text-xs font-semibold" style={{color:colors.rose}}>Uploading media securely</Text><Text className="text-xs font-bold" style={{color:colors.text}}>{progress}%</Text></View><View className="h-2 overflow-hidden rounded-full" style={{backgroundColor:colors.surface}}><View className="h-2 rounded-full" style={{width:progress+"%",backgroundColor:colors.crimson}}/></View></View>:null}
+    {busy?<View className="mb-3"><View className="mb-2 flex-row justify-between"><Text className="text-xs font-semibold" style={{color:colors.rose}}>Uploading media securely</Text><Text className="text-xs font-bold" style={{color:colors.text}}>{progress}%</Text></View><View className="h-2 overflow-hidden rounded-full" style={{backgroundColor:colors.surface}}><View className="h-2 rounded-full" style={{width:(progress+"%") as `${number}%`,backgroundColor:colors.crimson}}/></View></View>:null}
     <Pressable onPress={()=>void publish()} disabled={busy||!assets.length||totalDuration<1||totalDuration>MAX_DURATION} className="mb-8 flex-row items-center justify-center rounded-2xl px-4 py-4" style={{backgroundColor:colors.rose,opacity:busy||!assets.length||totalDuration<1||totalDuration>MAX_DURATION?0.5:1}}>
       {busy?<ActivityIndicator color={colors.background}/>:<MaterialCommunityIcons name="send" size={19} color={colors.background}/>}<Text className="ml-2 text-base font-bold" style={{color:colors.background}}>{busy?"Publishing...":"Publish clip"}</Text>
     </Pressable>
