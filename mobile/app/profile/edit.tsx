@@ -86,7 +86,7 @@ export default function EditProfileScreen() {
     }
   }
 
-  function field(label: string, value: string, change: (next: string) => void, placeholder: string, options?: { multiline?: boolean; maxLength?: number; autoCapitalize?: "none" | "sentences" | "words" | "characters" }) {
+  function field(label: string, value: string, change: (next: string) => void, placeholder: string, options?: { multiline?: boolean; maxLength?: number; autoCapitalize?: "none" | "sentences" | "words"; }) {
     return (
       <View className="mb-4 rounded-2xl border p-4" style={{ backgroundColor: colors.panel, borderColor: colors.line }}>
         <Text className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: colors.muted }}>{label}</Text>
@@ -110,7 +110,7 @@ export default function EditProfileScreen() {
   return (
     <Screen>
       <View className="mb-6 flex-row items-center">
-        <Pressable onPress={() => router.back()} className="mr-3 h-10 w-10 items-center justify-center rounded-full border" style={{ borderColor: colors.line, backgroundColor: colors.panel }} accessibilityLabel="Back to profile">
+        <Pressable onPress={() => router.back()} className="mr-3 h-10 w-10 items-center justify-center rounded-full border" style={{ borderColor: colors.line, backgroundColor: colors.panel }} accessibilityLabel="Go back">
           <MaterialCommunityIcons name="arrow-left" size={21} color={colors.text} />
         </Pressable>
         <View className="flex-1">
@@ -146,12 +146,12 @@ export default function EditProfileScreen() {
           <View className="mb-6 flex-row items-center justify-between rounded-2xl border p-4" style={{ backgroundColor: colors.panel, borderColor: colors.line }}>
             <View className="flex-1 pr-3">
               <Text className="text-sm font-bold" style={{ color: colors.text }}>Hidden account</Text>
-              <Text className="mt-1 text-xs leading-5" style={{ color: colors.muted }}>Limit profile and content visibility according to Zenigram's existing hidden-account rules.</Text>
+              <Text className="mt-1 text-xs leading-5" style={{ color: colors.muted }}>Limit profile and content visibility according to Zenigram’s existing hidden-account rules.</Text>
             </View>
             <Switch value={hidden} onValueChange={setHidden} disabled={saving} trackColor={{ false: colors.surface, true: colors.crimson }} thumbColor={hidden ? colors.rose : colors.muted} />
           </View>
 
-          <Pressable onPress={() => void save()} disabled={saving || !username.trim()} className="mb-8 flex-row items-center justify-center rounded-2xl px-4 py-4" style={{ backgroundColor: colors.rose, opacity: saving || !username.trim() ? 0.5 : 1 }}>
+          <Pressable onPress={() => void save()} disabled={saving || !username.trim()} className="mb-8 flex-row items-center justify-center rounded-2xl px-4 py-4" style={{ backgroundColor: colors.rose }}>
             {saving ? <ActivityIndicator color={colors.background} /> : <MaterialCommunityIcons name="content-save-outline" size={19} color={colors.background} />}
             <Text className="ml-2 text-base font-bold" style={{ color: colors.background }}>{saving ? "Saving..." : "Save changes"}</Text>
           </Pressable>
