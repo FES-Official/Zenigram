@@ -35,7 +35,7 @@ In mobile/.env, set EXPO_PUBLIC_API_URL to the HTTPS origin of the deployed Next
 
 ## Security gates still required before public release
 
-- Add distributed rate limits and abuse monitoring to login and refresh endpoints.
+- Login now uses a DynamoDB-backed fixed-window limiter (8 attempts per IP/identifier and 40 per IP per 15 minutes, with hashed identifiers); add an equivalent refresh-endpoint limiter and abuse monitoring before public release.
 - Implement logout-all and user-visible per-device session management.
 - Add native Google and Apple OAuth with authorization-code + PKCE flows; do not ship provider client secrets.
 - Add registration, email/phone verification, recovery and other account flows.
