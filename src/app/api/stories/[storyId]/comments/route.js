@@ -1,6 +1,20 @@
 import { isValidObjectId, jsonError, jsonOk, normalizeString } from "@/app/lib/api";
-import { addStoryComment, listStoryComments, toggleStoryCommentLike } from "@/app/lib/storyStore";
+import { addStoryComment, getStory, listStoryComments, toggleStoryCommentLike } from "@/app/lib/storyStore";
 import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
+import { getUserById, getUserRelations } from "@/app/lib/socialStore";
+import { canViewContent } from "@/app/lib/audienceStore";
+
+async function canViewStory(storyId, viewerId) {
+  const story = await getStory(storyId);
+  if (!story || new Date(story.expiresAt).getTime() <= Date.now()) return false;
+
+  const owner = await getUserById(story.userId);
+  if (!owner || owner.accountStatus !== "active") return false;
+  if (!viewerId) return !owner.ishidden;
+
+  const relations = await getUserRelations(viewerId);
+  return canViewContent(story, viewerId, owner, relations);
+}
 
 export async function GET(req, { params }) {
   try {
@@ -8,6 +22,7 @@ export async function GET(req, { params }) {
     if (!isValidObjectId(storyId)) return jsonError("Invalid story", 400);
     const viewerId = await getAuthenticatedUserId(req);
     if (req.headers.get("authorization") && !viewerId) return jsonError("Unauthorized", 401);
+    if (!(await canViewStory(storyId, viewerId))) return jsonError("Story not found or unavailable", 404);
     return jsonOk({ comments: await listStoryComments(storyId, viewerId || "") });
   } catch (error) {
     console.error("Story comments fetch error:", error);
@@ -23,6 +38,7 @@ export async function POST(req, { params }) {
     const { text, parentId } = await req.json();
     const cleanText = normalizeString(text);
     if (!isValidObjectId(storyId) || !cleanText || cleanText.length > 500) return jsonError("Invalid comment", 400);
+    if (!(await canViewStory(storyId, userId))) return jsonError("Story not found or unavailable", 404);
     const comment = await addStoryComment(storyId, userId, cleanText, String(parentId || "") || null);
     if (!comment) return jsonError("Story not found", 404);
     return jsonOk({ comment }, 201);
@@ -33,5 +49,5 @@ export async function POST(req, { params }) {
 }
 
 export async function PATCH(req, { params }) {
-  try { const userId = await getAuthenticatedUserId(req); if (!userId) return jsonError("Unauthorized", 401); const { storyId } = await params; const { commentId, action } = await req.json(); if (!isValidObjectId(storyId) || action !== "like" || !commentId) return jsonError("Invalid comment action", 400); const comment = await toggleStoryCommentLike(storyId, String(commentId), userId); if (!comment) return jsonError("Comment not found", 404); return jsonOk({ comment }); } catch { return jsonError("Unable to update comment", 500); }
+  try { const userId = await getAuthenticatedUserId(req); if (!userId) return jsonError("Unauthorized", 401); const { storyId } = await params; const { commentId, action } = await req.json(); if (!isValidObjectId(storyId) || action !== "like" || !commentId) return jsonError("Invalid comment action", 400); if (!(await canViewStory(storyId, userId))) return jsonError("Story not found or unavailable", 404); const comment = await toggleStoryCommentLike(storyId, String(commentId), userId); if (!comment) return jsonError("Comment not found", 404); return jsonOk({ comment }); } catch { return jsonError("Unable to update comment", 500); }
 }
