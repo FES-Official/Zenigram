@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { Screen } from "@/components/Screen";
@@ -25,6 +25,7 @@ type Clip = {
   likesCount?: number;
   viewsCount?: number;
   shares?: number;
+  commentsCount?: number;
   viewerLiked?: boolean;
   viewerSaved?: boolean;
   viewerPreference?: "interested" | "not_interested" | null;
@@ -48,6 +49,7 @@ function ClipCard({
   busy,
   onAction,
   onViewed,
+  onComment,
 }: {
   clip: Clip;
   active: boolean;
@@ -55,6 +57,7 @@ function ClipCard({
   busy: boolean;
   onAction: (action: "like" | "save" | "interested" | "not_interested") => void;
   onViewed: () => void;
+  onComment: () => void;
 }) {
   const [muted, setMuted] = useState(true);
   const [playing, setPlaying] = useState(false);
@@ -161,6 +164,10 @@ function ClipCard({
         <Pressable disabled={busy} onPress={() => onAction("like")} className="mb-4 items-center">
           <MaterialCommunityIcons name={clip.viewerLiked ? "heart" : "heart-outline"} size={29} color={clip.viewerLiked ? colors.rose : "#FFFFFF"} />
           <Text className="mt-1 text-xs font-bold" style={{ color: "#FFFFFF" }}>{Number(clip.likesCount || 0).toLocaleString()}</Text>
+        </Pressable>
+        <Pressable onPress={onComment} className="mb-4 items-center" accessibilityLabel="Open clip comments">
+          <MaterialCommunityIcons name="comment-outline" size={26} color="#FFFFFF" />
+          <Text className="mt-1 text-xs" style={{ color: "#FFFFFF" }}>{Number(clip.commentsCount || 0).toLocaleString()}</Text>
         </Pressable>
         <Pressable disabled={busy} onPress={() => onAction("save")} className="mb-4 items-center">
           <MaterialCommunityIcons name={clip.viewerSaved ? "bookmark" : "bookmark-outline"} size={27} color={clip.viewerSaved ? colors.rose : "#FFFFFF"} />
@@ -283,6 +290,7 @@ export default function ClipsScreen() {
                 busy={busyClipId === item._id}
                 onAction={action => void runAction(item, action)}
                 onViewed={() => void markViewed(item)}
+                onComment={() => router.push("/clip/" + encodeURIComponent(item._id) + "/comments")}
               />
             )}
             pagingEnabled
