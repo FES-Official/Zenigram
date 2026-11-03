@@ -31,12 +31,11 @@ export async function POST(req) {
         : Promise.resolve({ blockedUsers: [], blockedByUsers: [], supporting: [] }),
     ]);
 
-    if (viewerSession?.user?.id && String(user._id) !== viewerSession.user.id) {
-      const blocked = viewerRelations.blockedUsers.includes(String(user._id)) || relations.blockedUsers.includes(viewerSession.user.id);
+    if (viewerId && String(user._id) !== viewerId) {
+      const blocked = viewerRelations.blockedUsers.includes(String(user._id)) || relations.blockedUsers.includes(viewerId);
       if (blocked) return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
 
-    const viewerId = viewerSession?.user?.id || "";
     const isOwnProfile = String(user._id) === String(viewerId);
     if (!isOwnProfile && viewerId) await recordProfileVisit(user._id, viewerId);
 
