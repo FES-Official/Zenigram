@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { EXPLORATION_ACHIEVEMENTS, LAST_HOURS_GOAL } from "@/app/lib/progression";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
@@ -22,11 +23,11 @@ export async function POST(req) {
     }
     if (!user) return NextResponse.json({ message: "User not found" }, { status: 404 });
 
-    const viewerSession = await getServerSession(authOptions);
+    const viewerId = await getAuthenticatedUserId(req);
     const [relations, viewerRelations] = await Promise.all([
       getUserRelations(user._id),
-      viewerSession?.user?.id
-        ? getUserRelations(viewerSession.user.id)
+      viewerId
+        ? getUserRelations(viewerId)
         : Promise.resolve({ blockedUsers: [], blockedByUsers: [], supporting: [] }),
     ]);
 
