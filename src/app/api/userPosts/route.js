@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import {
   jsonError,
   normalizeString,
@@ -14,7 +13,7 @@ import {
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
+    const viewerId = await getAuthenticatedUserId(req);
     const body = await req.json();
     const userId = normalizeString(body.userId);
     const username = normalizeString(body.username);
@@ -24,7 +23,7 @@ export async function POST(req) {
       : await getUserByUsername(username);
     if (!user) return jsonError("User not found", 404);
 
-    const viewerId = session?.user?.id;
+    const viewerId = await getAuthenticatedUserId(req);
     const [relations, viewerRelations] = await Promise.all([
       getUserRelations(user._id),
       viewerId
