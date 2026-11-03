@@ -2060,6 +2060,7 @@ export async function createMessage(input) {
     sender: input.senderId,
     text: input.text || "",
     media: input.media || [],
+    drawing: input.drawing || null,
     replyTo: input.replyTo || null,
     reactions: [],
     likedBy: [],
