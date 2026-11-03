@@ -1,18 +1,22 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Switch, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, Switch, Text, TextInput, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { api, getApiErrorMessage } from "@/lib/api";
 import { colors } from "@/theme/colors";
+import { deleteUploadedMedia, uploadPickedImage, type UploadedImage } from "@/lib/nativeUpload";
 
-type ProfileData = { username?: string; bio?: string; website?: string; ishidden?: boolean };
+type ProfileData = { username?: string; bio?: string; website?: string; profilePic?: string; ishidden?: boolean };
 
 export default function EditProfileScreen() {
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
   const [website, setWebsite] = useState("");
   const [hidden, setHidden] = useState(false);
+  const [profilePic, setProfilePic] = useState("");
+  const [photo, setPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -25,6 +29,7 @@ export default function EditProfileScreen() {
       setUsername(data.username || "");
       setBio(data.bio || "");
       setWebsite(data.website || "");
+      setProfilePic(data.profilePic || "");
       setHidden(Boolean(data.ishidden));
     }).catch(caught => {
       if (active) setError(getApiErrorMessage(caught));
@@ -34,21 +39,47 @@ export default function EditProfileScreen() {
     return () => { active = false; };
   }, []);
 
+  async function choosePhoto() {
+    setError("");
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setError("Allow photo access to change your profile picture.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.88,
+        exif: false,
+      });
+      if (!result.canceled) setPhoto(result.assets[0] || null);
+    } catch (caught) {
+      setError(getApiErrorMessage(caught));
+    }
+  }
+
   async function save() {
     if (saving) return;
     setSaving(true);
     setError("");
     setNotice("");
+    let uploaded: UploadedImage | null = null;
     try {
+      if (photo) uploaded = await uploadPickedImage(photo);
       await api.post("/api/profile-update", {
         username: username.trim(),
         bio: bio.trim(),
         website: website.trim(),
         ishidden: hidden,
+        ...(uploaded ? { profilePicKey: uploaded.key } : {}),
       });
+      if (uploaded) setProfilePic(photo?.uri || profilePic);
       setNotice("Your profile changes are saved.");
       router.back();
     } catch (caught) {
+      if (uploaded?.key) await deleteUploadedMedia([uploaded.key]).catch(() => {});
       setError(getApiErrorMessage(caught));
     } finally {
       setSaving(false);
@@ -92,6 +123,22 @@ export default function EditProfileScreen() {
       {notice ? <Text className="mb-4 text-sm font-semibold" style={{ color: colors.success }}>{notice}</Text> : null}
       {loading ? <View className="items-center py-12"><ActivityIndicator color={colors.rose} size="large" /></View> : (
         <>
+          <View className="mb-5 flex-row items-center rounded-2xl border p-4" style={{ backgroundColor: colors.panel, borderColor: colors.line }}>
+            {photo?.uri || profilePic ? (
+              <Image source={{ uri: photo?.uri || profilePic }} className="h-16 w-16 rounded-full" />
+            ) : (
+              <View className="h-16 w-16 items-center justify-center rounded-full" style={{ backgroundColor: colors.wine }}>
+                <MaterialCommunityIcons name="account" size={28} color={colors.rose} />
+              </View>
+            )}
+            <View className="ml-4 flex-1">
+              <Text className="text-sm font-bold" style={{ color: colors.text }}>Profile picture</Text>
+              <Text className="mt-1 text-xs" style={{ color: colors.muted }}>Choose a square photo for your profile.</Text>
+              <Pressable onPress={() => void choosePhoto()} disabled={saving} className="mt-2 self-start">
+                <Text className="text-xs font-bold" style={{ color: colors.rose }}>Change photo</Text>
+              </Pressable>
+            </View>
+          </View>
           {field("Username", username, setUsername, "your.username", { maxLength: 24, autoCapitalize: "none" })}
           {field("Bio", bio, setBio, "A little about you...", { multiline: true, maxLength: 300 })}
           {field("Website", website, setWebsite, "https://example.com", { maxLength: 300, autoCapitalize: "none" })}
