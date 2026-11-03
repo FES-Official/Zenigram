@@ -118,7 +118,7 @@ export default function StoryViewerScreen() {
                 </View>
                 <View className="flex-row items-center">
                   <Pressable onPress={() => router.push("/story/" + encodeURIComponent(storyId) + "/comments")} className="mr-4 h-11 w-11 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(0,0,0,0.4)" }} accessibilityLabel="Open story comments">
-                    <MaterialCommunityIcons name="message-circle-outline" size={22} color="#FFFFFF" />
+                    <MaterialCommunityIcons name="message-outline" size={22} color="#FFFFFF" />
                   </Pressable>
                   <Pressable onPress={() => void toggleLike()} disabled={likeBusy} className="h-11 w-11 items-center justify-center rounded-full" style={{ backgroundColor: story.viewerLiked ? colors.wine : "rgba(0,0,0,0.4)" }} accessibilityLabel={story.viewerLiked ? "Unlike story" : "Like story"}>
                     {likeBusy ? <ActivityIndicator color="#FFFFFF" /> : <MaterialCommunityIcons name={story.viewerLiked ? "heart" : "heart-outline"} size={23} color={story.viewerLiked ? colors.rose : "#FFFFFF"} />}
