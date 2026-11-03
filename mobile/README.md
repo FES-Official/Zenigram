@@ -18,7 +18,7 @@ The visual system follows Zenigram's dark-first black-cherry / burgundy / crimso
 - Stories include image creation with explicit location permission, viewer/engagement, comments and Stories Globe discovery.
 - Clips include native vertical playback, engagement, comments and a native video upload flow with resumable multipart S3 transfers.
 - Messaging includes a native inbox and text conversation screen; REST refresh is available while persistent Socket.IO is pending.
-- Profile includes account/progression, profile picture editing, bio/website and hidden-account settings.
+- Profiles include account/progression and profile editing; public creator profiles, discovery/search, support relationships, Close Ones, support-request decisions, blocking and blocked-account management are connected.
 - Notifications can be viewed and marked read in the native client.
 - The web app remains in place and its browser NextAuth session is kept separate.
 
@@ -48,8 +48,8 @@ Other route families still need to be audited and converted explicitly. Do not g
 - [ ] Stories: image composer, explicit location tagging, viewer/engagement, comments and Stories Globe are connected; full story editor parity, video stories and story event parity remain.
 - [ ] Clips: native playback, likes/views/saves/interest feedback, comments and resumable video publishing are connected; multi-asset timeline, trimming, filters and text overlays remain.
 - [ ] Messaging: native inbox and text chat/read receipts are connected; groups, drawing/media messages, reactions, edits/deletes and persistent real-time updates remain.
-- [ ] Profiles: profile view, picture/bio/website editing and hidden-account toggle are connected; followers/following, full privacy, blocking/unblocking and Z+ security remain.
-- [ ] Notifications list/read state is connected; search, saved collections, missions/supporter milestones and professional dashboard remain.
+- [ ] Profiles / social graph: native public profiles, creator search/suggestions, supporters/supporting/Close Ones, hidden-account support requests, block/unblock and blocked-account management are connected; connection pagination, deeper privacy controls and Z+ device security remain.
+- [ ] Notifications list/read state and support/unblock request decisions are connected; saved collections, missions/supporter milestones and professional dashboard remain.
 - [ ] Reports, account controls, legal/privacy screens and accessibility
 
 ## Local development
