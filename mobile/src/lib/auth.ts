@@ -1,6 +1,7 @@
 import { api, assertApiConfigured } from "./api";
 import {
   clearSession,
+  getRefreshToken,
   saveSession,
   type MobileSession,
 } from "./session";
@@ -26,8 +27,9 @@ export async function signInWithPassword(
 }
 
 export async function signOut(): Promise<void> {
+  const refreshToken = await getRefreshToken();
   try {
-    await api.post("/api/mobile/auth/logout");
+    await api.post("/api/mobile/auth/logout", { refreshToken });
   } finally {
     await clearSession();
   }
