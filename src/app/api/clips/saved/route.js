@@ -1,9 +1,9 @@
-import { getServerSession } from "next-auth";
 import { BatchGetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { authOptions } from "@/app/lib/auth";
 import { getDynamoDocumentClient, getDynamoTableName } from "@/app/lib/dynamodb";
 import { getReadableMediaUrl } from "@/app/lib/s3Storage";
 import { getUserById, getUserRelations } from "@/app/lib/socialStore";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
+import { canViewContent } from "@/app/lib/audienceStore";
 
 const table = () => getDynamoTableName();
 const client = () => getDynamoDocumentClient();
@@ -43,16 +43,8 @@ async function hydrateClip(clip, viewerId, savedAt, viewerRelations) {
     })),
   );
   const user = await getUserById(clip.userId);
-  const blocked = new Set([
-    ...(viewerRelations.blockedUsers || []),
-    ...(viewerRelations.blockedByUsers || []),
-  ].map(String));
-
   if (!user || user.accountStatus !== "active") return null;
-  if (blocked.has(String(clip.userId))) return null;
-  if (user.ishidden && !viewerRelations.supporting?.map(String).includes(String(clip.userId)) && String(clip.userId) !== String(viewerId)) {
-    return null;
-  }
+  if (!(await canViewContent(clip, viewerId, user, viewerRelations))) return null;
 
   return {
     ...clip,
@@ -66,14 +58,12 @@ async function hydrateClip(clip, viewerId, savedAt, viewerRelations) {
   };
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const viewerId = await getAuthenticatedUserId(request);
+    if (!viewerId) {
       return Response.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
-
-    const viewerId = session.user.id;
     const [savedResult, viewerRelations] = await Promise.all([
       client().send(new QueryCommand({
         TableName: table(),
