@@ -24,10 +24,33 @@ const FILTERS = [
   {id:"mono",label:"Mono",tint:"rgba(30,30,30,0.46)"},
 ] as const;
 const LAYOUTS = [
-  {id:"single",label:"Full frame",icon:"image-outline"},
-  {id:"split",label:"Split",icon:"view-column-outline"},
-  {id:"collage",label:"Collage",icon:"view-grid-outline"},
+  {id:"one",label:"Full frame",icon:"image-outline"},
+  {id:"split",label:"Horizontal split",icon:"view-column-outline"},
+  {id:"duo",label:"Duo",icon:"view-column"},
+  {id:"hero",label:"Hero",icon:"view-dashboard-outline"},
+  {id:"columns",label:"Columns",icon:"view-column"},
+  {id:"quad",label:"Grid",icon:"view-grid-outline"},
+  {id:"mosaic",label:"Mosaic",icon:"collage"},
+  {id:"six",label:"Six",icon:"view-grid"},
 ] as const;
+const BACKGROUNDS = [
+  {id:"black-cherry",label:"Black cherry",color:"#16070D"},
+  {id:"crimson",label:"Crimson",color:"#64101F"},
+  {id:"burgundy",label:"Burgundy",color:"#4A1028"},
+  {id:"ember",label:"Ember",color:"#542014"},
+  {id:"ruby",label:"Ruby",color:"#741B38"},
+  {id:"wine",label:"Wine",color:"#32102D"},
+] as const;
+const STORY_CELLS: Record<string,Array<{x:number;y:number;w:number;h:number}>> = {
+  one:[{x:0,y:0,w:100,h:100}],
+  split:[{x:0,y:0,w:100,h:50},{x:0,y:50,w:100,h:50}],
+  duo:[{x:0,y:0,w:50,h:100},{x:50,y:0,w:50,h:100}],
+  hero:[{x:0,y:0,w:100,h:62},{x:0,y:62,w:50,h:38},{x:50,y:62,w:50,h:38}],
+  columns:[{x:0,y:0,w:33.34,h:100},{x:33.34,y:0,w:33.33,h:100},{x:66.67,y:0,w:33.33,h:100}],
+  quad:[{x:0,y:0,w:50,h:50},{x:50,y:0,w:50,h:50},{x:0,y:50,w:50,h:50},{x:50,y:50,w:50,h:50}],
+  mosaic:[{x:0,y:0,w:62,h:62},{x:62,y:0,w:38,h:31},{x:62,y:31,w:38,h:31},{x:0,y:62,w:50,h:38},{x:50,y:62,w:50,h:38}],
+  six:Array.from({length:6},(_,index)=>({x:(index%2)*50,y:Math.floor(index/2)*(100/3),w:50,h:100/3})),
+};
 const BRUSH_COLORS = ["#FFFFFF","#FF7892","#FFD166","#8BE9FD","#111111"];
 
 type StoryText = {id:string;value:string;x:number;y:number;size:number;color:string;background:boolean;backgroundColor:string;italic:boolean};
@@ -58,7 +81,10 @@ export default function CreateStoryScreen() {
   const previewRef=useRef<View>(null);
   const stageSize=useRef({width:360,height:640});
   const [assets,setAssets]=useState<ImagePicker.ImagePickerAsset[]>([]);
-  const [layout,setLayout]=useState<(typeof LAYOUTS)[number]["id"]>("single");
+  const [layout,setLayout]=useState<(typeof LAYOUTS)[number]["id"]>("one");
+  const [background,setBackground]=useState<(typeof BACKGROUNDS)[number]["id"]>("black-cherry");
+  const [gap,setGap]=useState(3);
+  const [cornerRadius,setCornerRadius]=useState(12);
   const [filter,setFilter]=useState<(typeof FILTERS)[number]["id"]>("none");
   const [caption,setCaption]=useState("");
   const [duration,setDuration]=useState(15);
@@ -146,18 +172,24 @@ export default function CreateStoryScreen() {
   }
 
   function renderStoryMedia(){
-    if(!assets.length)return <View className="h-full w-full items-center justify-center" style={{backgroundColor:"#24111A"}}><MaterialCommunityIcons name="image-plus" size={48} color={colors.rose}/><Text className="mt-3 text-sm font-bold" style={{color:colors.text}}>Your story preview</Text></View>;
-    if(layout==="single"||assets.length===1)return <Image source={{uri:assets[0].uri}} resizeMode="cover" style={{width:"100%",height:"100%"}}/>;
-    if(layout==="split"&&assets.length>=2){
-      return <View className="h-full w-full flex-row">
-        <View style={{width:"50%",height:"100%"}}><Image source={{uri:assets[0].uri}} resizeMode="cover" style={{width:"100%",height:"100%"}}/></View>
-        <View style={{width:"50%",height:"100%"}}>{assets.slice(1).map((asset,index)=><View key={asset.assetId||asset.uri+index} style={{flex:1,width:"100%"}}><Image source={{uri:asset.uri}} resizeMode="cover" style={{width:"100%",height:"100%"}}/></View>)}</View>
-      </View>;
-    }
-    return <View className="h-full w-full flex-row flex-wrap" style={{gap:2,backgroundColor:"#12070B"}}>
-      {assets.map((asset,index)=><View key={asset.assetId||asset.uri+index} style={{width:assets.length===2?"49.5%":"49.5%",height:assets.length===2?"100%":assets.length<=4?"49.5%":"32.8%"}}>
-        <Image source={{uri:asset.uri}} resizeMode="cover" style={{width:"100%",height:"100%"}}/>
-      </View>)}
+    const activeBackground=BACKGROUNDS.find(item=>item.id===background)?.color||"#16070D";
+    const cells=STORY_CELLS[layout]||STORY_CELLS.one;
+    if(!assets.length)return <View className="h-full w-full items-center justify-center" style={{backgroundColor:activeBackground}}><MaterialCommunityIcons name="image-plus" size={48} color={colors.rose}/><Text className="mt-3 text-sm font-bold" style={{color:colors.text}}>Your story preview</Text></View>;
+    return <View className="h-full w-full overflow-hidden" style={{backgroundColor:activeBackground}}>
+      {cells.map((cell,index)=>{
+        const asset=assets[index];
+        if(!asset)return null;
+        const inset=gap/2;
+        return <View key={asset.assetId||asset.uri+index} style={{
+          position:"absolute",left:(cell.x+"%") as `${number}%`,top:(cell.y+"%") as `${number}%`,
+          width:(cell.w+"%") as `${number}%`,height:(cell.h+"%") as `${number}%`,
+          padding:inset,
+        }}>
+          <View className="h-full w-full overflow-hidden" style={{borderRadius:cornerRadius,backgroundColor:"#090609"}}>
+            <Image source={{uri:asset.uri}} resizeMode="cover" style={{width:"100%",height:"100%"}}/>
+          </View>
+        </View>;
+      })}
     </View>;
   }
 
@@ -194,7 +226,7 @@ export default function CreateStoryScreen() {
 
     {error?<View className="mb-4 rounded-2xl border p-3" style={{backgroundColor:colors.panel,borderColor:colors.danger}}><Text className="text-sm leading-5" style={{color:colors.danger}}>{error}</Text></View>:null}
 
-    <View ref={previewRef} collapsable={false} onLayout={onStageLayout} className="mb-4 overflow-hidden rounded-3xl" style={{width:"100%",aspectRatio:9/16,maxHeight:560,backgroundColor:"#090609"}}>
+    <View ref={previewRef} collapsable={false} onLayout={onStageLayout} className="mb-4 overflow-hidden rounded-3xl" style={{width:"100%",aspectRatio:9/16,maxHeight:560,backgroundColor:BACKGROUNDS.find(item=>item.id===background)?.color||"#16070D"}}>
       {renderStoryMedia()}
       <View pointerEvents="none" className="absolute inset-0" style={{backgroundColor:activeFilter.tint}}/>
       {texts.map(item=><View key={item.id} pointerEvents="none" className="absolute max-w-[88%] rounded-xl px-3 py-2" style={{
@@ -222,10 +254,16 @@ export default function CreateStoryScreen() {
     </View>:null}
 
     <View className="mb-4 rounded-3xl border p-4" style={{backgroundColor:colors.panel,borderColor:colors.line}}>
-      <Text className="mb-3 text-xs font-bold uppercase tracking-widest" style={{color:colors.muted}}>Layout</Text>
+      <Text className="mb-3 text-xs font-bold uppercase tracking-widest" style={{color:colors.muted}}>Layout · website presets</Text>
       <View className="flex-row flex-wrap">{LAYOUTS.map(item=><Pressable key={item.id} onPress={()=>setLayout(item.id)} disabled={publishing} className="mb-2 mr-2 flex-row items-center rounded-xl border px-3 py-3" style={{borderColor:layout===item.id?colors.rose:colors.line,backgroundColor:layout===item.id?colors.wine:colors.surface}}>
         <MaterialCommunityIcons name={item.icon as never} size={17} color={layout===item.id?colors.rose:colors.muted}/><Text className="ml-2 text-xs font-bold" style={{color:layout===item.id?colors.rose:colors.muted}}>{item.label}</Text>
       </Pressable>)}</View>
+      <Text className="mb-2 mt-3 text-xs font-bold uppercase tracking-widest" style={{color:colors.muted}}>Background</Text>
+      <View className="flex-row flex-wrap">{BACKGROUNDS.map(item=><Pressable key={item.id} onPress={()=>setBackground(item.id)} disabled={publishing} className="mb-2 mr-2 flex-row items-center rounded-full border px-3 py-2" style={{borderColor:background===item.id?colors.rose:colors.line,backgroundColor:colors.surface}}>
+        <View className="mr-2 h-4 w-4 rounded-full" style={{backgroundColor:item.color}}/><Text className="text-xs font-semibold" style={{color:background===item.id?colors.rose:colors.muted}}>{item.label}</Text>
+      </Pressable>)}</View>
+      <StoryRange label="Collage gap" value={gap} min={0} max={12} onChange={setGap}/>
+      <StoryRange label="Image corner radius" value={cornerRadius} min={0} max={28} onChange={setCornerRadius}/>
       <Text className="mb-2 mt-3 text-xs font-bold uppercase tracking-widest" style={{color:colors.muted}}>Filters</Text>
       <View className="flex-row flex-wrap">{FILTERS.map(item=><Pressable key={item.id} onPress={()=>setFilter(item.id)} disabled={publishing} className="mb-2 mr-2 rounded-full border px-3 py-2" style={{borderColor:filter===item.id?colors.rose:colors.line,backgroundColor:filter===item.id?colors.wine:colors.surface}}><Text className="text-xs font-semibold" style={{color:filter===item.id?colors.rose:colors.muted}}>{item.label}</Text></Pressable>)}</View>
       <StoryRange label="Story duration (seconds)" value={duration} min={5} max={60} onChange={setDuration}/>
