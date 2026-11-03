@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import {
   createMessage,
   createNotification,
@@ -21,18 +20,18 @@ function jsonError(message, status = 400) {
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
 
     const { targetUserId, conversationId, action = "block" } = await req.json();
     if (!targetUserId || typeof targetUserId !== "string") return jsonError("Invalid user", 400);
-    if (targetUserId === session.user.id) return jsonError("You cannot block yourself", 400);
+    if (targetUserId === userId) return jsonError("You cannot block yourself", 400);
     if (!["block", "unblock"].includes(action)) {
       return jsonError("Invalid block action", 400);
     }
 
     const [user, target] = await Promise.all([
-      getUserById(session.user.id),
+      getUserById(userId),
       getUserById(targetUserId),
     ]);
     if (!user || !target) return jsonError("User not found", 404);
