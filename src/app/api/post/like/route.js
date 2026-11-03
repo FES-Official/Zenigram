@@ -1,22 +1,21 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
 import { jsonError, jsonOk } from "@/app/lib/api";
 import { createNotification, getPost, getUserById, getUserRelations } from "@/app/lib/socialStore";
 import { canViewContent } from "@/app/lib/audienceStore";
 import { togglePostLikeAtomic } from "@/app/lib/postEngagement";
 import { emitToUsers } from "@/app/lib/socketHub";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
     const { postId } = await req.json();
     if (!postId || typeof postId !== "string") return jsonError("Invalid post", 400);
 
     const [user, post, relations] = await Promise.all([
-      getUserById(session.user.id),
+      getUserById(userId),
       getPost(postId),
-      getUserRelations(session.user.id),
+      getUserRelations(userId),
     ]);
     if (!user) return jsonError("User not found", 404);
     if (!post) return jsonError("Post not found", 404);
