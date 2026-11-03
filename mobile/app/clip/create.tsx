@@ -89,36 +89,38 @@ export default function CreateClipScreen() {
   const totalDuration=timeline.reduce((sum,item)=>sum+item.duration,0);
   const selected=assets.find(item=>item.id===selectedId)||assets[0]||null;
   const activeEntry=timeline.find(item=>playhead>=item.start&&playhead<item.end)||timeline[timeline.length-1]||null;
+  const previewAsset=activeEntry;
+  const previewFilter=FILTERS.find(item=>item.id===previewAsset?.filter)||FILTERS[0];
   const selectedText=textLayers.find(item=>item.id===selectedTextId)||null;
   const player=useVideoPlayer(null,p=>{p.loop=false;p.muted=true;});
 
   useEffect(()=>{
-    if(selected?.type!=="video"){
+    if(activeEntry?.type!=="video"){
       player.pause();
       player.replace(null);
       return;
     }
 
-    // Preview the selected source interval, not the entire original video.
+    // The preview follows the timeline playhead and loops within this scene's trim.
     player.timeUpdateEventInterval=0.12;
     const loadSubscription=player.addListener("sourceLoad",()=>{
-      player.seekTo(selected.trimStart);
+      player.seekTo(activeEntry.trimStart);
       player.play();
     });
     const timeSubscription=player.addListener("timeUpdate",event=>{
-      const segmentEnd=selected.trimStart+selected.duration;
+      const segmentEnd=activeEntry.trimStart+activeEntry.duration;
       if(event.currentTime>=segmentEnd){
         player.pause();
-        player.seekTo(selected.trimStart);
+        player.seekTo(activeEntry.trimStart);
       }
     });
-    player.replace(selected.uri);
+    player.replace(activeEntry.uri);
 
     return ()=>{
       loadSubscription.remove();
       timeSubscription.remove();
     };
-  },[player,selected?.id,selected?.type,selected?.uri,selected?.trimStart,selected?.duration]);
+  },[player,activeEntry?.id,activeEntry?.type,activeEntry?.uri,activeEntry?.trimStart,activeEntry?.duration]);
 
   function addAssets(chosen:ImagePicker.ImagePickerAsset[]) {
     const remaining=Math.max(0,MAX_ITEMS-assets.length);
@@ -216,9 +218,9 @@ export default function CreateClipScreen() {
     <Text className="mb-4 text-sm leading-6" style={{color:colors.muted}}>Combine photos and videos, arrange scenes, trim video segments, add timed text, apply filters and choose scene transitions.</Text>
     {error?<View className="mb-4 rounded-2xl border p-3" style={{backgroundColor:colors.panel,borderColor:colors.danger}}><Text className="text-sm leading-5" style={{color:colors.danger}}>{error}</Text></View>:null}
 
-    {selected?<View className="mb-4 overflow-hidden rounded-3xl" style={{height:390,backgroundColor:"#080508"}}>
-      {selected.type==="video"?<VideoView player={player} contentFit="contain" nativeControls style={{width:"100%",height:"100%"}}/>:<Image source={{uri:selected.uri}} resizeMode="contain" className="h-full w-full"/>}
-      <View pointerEvents="none" className="absolute inset-0" style={{backgroundColor:filter.tint}}/>
+    {previewAsset?<View className="mb-4 overflow-hidden rounded-3xl" style={{height:390,backgroundColor:"#080508"}}>
+      {previewAsset.type==="video"?<VideoView player={player} contentFit="contain" nativeControls style={{width:"100%",height:"100%"}}/>:<Image source={{uri:previewAsset.uri}} resizeMode="contain" className="h-full w-full"/>}
+      <View pointerEvents="none" className="absolute inset-0" style={{backgroundColor:previewFilter.tint}}/>
       {visibleText.map(layer=><View key={layer.id} pointerEvents="none" className="absolute max-w-[90%] rounded-lg px-2 py-1" style={{
         left:(layer.x+"%") as `${number}%`,top:(layer.y+"%") as `${number}%`,backgroundColor:layer.background?layer.backgroundColor+"CC":"transparent",
         borderWidth:layer.showBorder?layer.borderWidth:0,borderColor:layer.borderColor,transform:[{rotate:layer.rotation+"deg"}],
