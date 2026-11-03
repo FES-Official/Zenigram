@@ -171,6 +171,15 @@ function ClipCard({
           <MaterialCommunityIcons name="comment-outline" size={26} color="#FFFFFF" />
           <Text className="mt-1 text-xs" style={{ color: "#FFFFFF" }}>{Number(clip.commentsCount || 0).toLocaleString()}</Text>
         </Pressable>
+        <Pressable
+          onPress={() => router.push("/clip/" + encodeURIComponent(clip._id) + "/comments")}
+          className="mb-4 items-center"
+          accessibilityRole="button"
+          accessibilityLabel="Open clip comments"
+        >
+          <MaterialCommunityIcons name="comment-outline" size={25} color="#FFFFFF" />
+          <Text className="mt-1 text-xs" style={{ color: "#FFFFFF" }}>{Number(clip.commentsCount || 0).toLocaleString()}</Text>
+        </Pressable>
         <Pressable disabled={busy} onPress={() => onAction("save")} className="mb-4 items-center">
           <MaterialCommunityIcons name={clip.viewerSaved ? "bookmark" : "bookmark-outline"} size={27} color={clip.viewerSaved ? colors.rose : "#FFFFFF"} />
           <Text className="mt-1 text-xs" style={{ color: "#FFFFFF" }}>Save</Text>
