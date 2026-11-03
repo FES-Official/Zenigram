@@ -10,6 +10,7 @@ import { randomUUID } from "crypto";
 import { jsonError, jsonOk, normalizeString } from "@/app/lib/api";
 import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import {
+  deleteS3Objects,
   getPublicS3Url,
   getS3Client,
   getS3Config,
@@ -97,6 +98,17 @@ export async function POST(req) {
         Metadata: { owner: userId },
       }), { expiresIn: 300 });
       return jsonOk({ key, uploadUrl, objectUrl: getPublicS3Url(key) });
+    }
+
+    if (action === "delete") {
+      const keys = Array.isArray(body.keys)
+        ? [...new Set(body.keys.map(normalizeString).filter(Boolean))]
+        : [];
+      if (!keys.length || keys.length > 10 || keys.some((key) => !isOwnedMediaKey(key, userId))) {
+        return jsonError("Invalid media cleanup request", 400);
+      }
+      const deletedCount = await deleteS3Objects(keys);
+      return jsonOk({ deletedCount });
     }
 
     if (action === "createMultipart") {
