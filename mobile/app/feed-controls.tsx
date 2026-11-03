@@ -156,7 +156,7 @@ export default function FeedControlsScreen() {
                     <Text className="text-xs font-bold" style={{ color: colors.rose }}>{value}/100</Text>
                   </View>
                   <View className="h-2 overflow-hidden rounded-full" style={{ backgroundColor: colors.surface }}>
-                    <View className="h-2 rounded-full" style={{ width: value + "%", backgroundColor: colors.crimson }} />
+                    <View className="h-2 rounded-full" style={{ width: (value + "%") as `${number}%`, backgroundColor: colors.crimson }} />
                   </View>
                   <View className="mt-2 flex-row justify-end">
                     <Pressable disabled={saving || value <= 0} onPress={() => void changeSource(id, -10)} className="mr-2 rounded-full border px-3 py-1" style={{ borderColor: colors.line, opacity: value <= 0 ? 0.4 : 1 }}>
