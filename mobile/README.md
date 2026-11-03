@@ -69,4 +69,15 @@ Before native builds, run:
     npx expo-doctor
     npx tsc --noEmit
 
-Do not submit to either store until the security gates and feature parity checklist are satisfied.
+## EAS build profiles
+
+The checked-in eas.json contains:
+- preview: internal distribution; Android output is an installable APK for device testing.
+- production: signed store builds with remote version auto-increment.
+
+After configuring the Expo/EAS project and signing credentials:
+
+    npx eas-cli build --platform all --profile preview
+    npx eas-cli build --platform all --profile production
+
+Do not submit to either store until the security gates and feature parity checklist are satisfied. Store submission credentials, signing certificates, app privacy declarations, screenshots and listing metadata still need to be configured by the app owner.
