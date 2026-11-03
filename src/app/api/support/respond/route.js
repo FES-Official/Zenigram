@@ -4,6 +4,7 @@ import {
   createNotification,
   getUserById,
   getBlockRelationship,
+  listNotifications,
   toggleSupport,
   updateNotification,
 } from "@/app/lib/socialStore";
@@ -24,19 +25,20 @@ export async function POST(req) {
       return jsonError("Action must be accept or reject", 400);
     }
 
-    const status = action === "accept" ? "approved" : "rejected";
-    const notification = await updateNotification(
-      userId,
-      notificationId,
-      { status, read: true },
+    const pendingNotification = (await listNotifications(userId, 250)).find(
+      (item) => item._id === notificationId,
     );
-    if (!notification || notification.type !== "support_request") {
+    if (
+      !pendingNotification ||
+      pendingNotification.type !== "support_request" ||
+      pendingNotification.status !== "pending"
+    ) {
       return jsonError("Request not found or already processed", 409);
     }
 
     const [currentUser, senderUser] = await Promise.all([
       getUserById(userId),
-      getUserById(notification.sender),
+      getUserById(pendingNotification.sender),
     ]);
     if (!currentUser || !senderUser) {
       return jsonError("Request user no longer exists", 404);
@@ -45,6 +47,19 @@ export async function POST(req) {
     if (action === "accept") {
       const relationship = await getBlockRelationship(currentUser._id, senderUser._id);
       if (relationship.blocked) return jsonError("This relationship is not available", 404);
+    }
+
+    const status = action === "accept" ? "approved" : "rejected";
+    const notification = await updateNotification(
+      userId,
+      notificationId,
+      { status, read: true },
+    );
+    if (!notification || notification.status !== status) {
+      return jsonError("Request could not be updated", 409);
+    }
+
+    if (action === "accept") {
       await toggleSupport(senderUser._id, currentUser._id);
     }
     await createNotification({
