@@ -1,19 +1,18 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
 import { NextResponse } from "next/server";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import {
   EXPLORATION_ACHIEVEMENTS,
   LAST_HOURS_GOAL,
 } from "@/app/lib/progression";
 import { getUserById } from "@/app/lib/socialStore";
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id)
+    const userId = await getAuthenticatedUserId(request);
+    if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const user = await getUserById(session.user.id);
+    const user = await getUserById(userId);
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
