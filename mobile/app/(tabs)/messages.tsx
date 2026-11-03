@@ -5,6 +5,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { api, getApiErrorMessage } from "@/lib/api";
 import { colors } from "@/theme/colors";
+import { getStoredUser } from "@/lib/session";
 
 type Person = { _id?: string; username?: string; fullname?: string; profilePic?: string };
 type Conversation = {
@@ -24,13 +25,18 @@ export default function MessagesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [myId, setMyId] = useState("");
 
   const load = useCallback(async (refresh = false) => {
     refresh ? setRefreshing(true) : setLoading(true);
     setError("");
     try {
-      const { data } = await api.get<{ conversations?: Conversation[] }>("/api/conversations");
-      setItems(Array.isArray(data.conversations) ? data.conversations : []);
+      const [user, response] = await Promise.all([
+        getStoredUser(),
+        api.get<{ conversations?: Conversation[] }>("/api/conversations"),
+      ]);
+      setMyId(user?.id || "");
+      setItems(Array.isArray(response.data.conversations) ? response.data.conversations : []);
     } catch (caught) {
       setError(getApiErrorMessage(caught));
     } finally {
@@ -46,7 +52,7 @@ export default function MessagesScreen() {
 
   function title(item: Conversation) {
     if (item.groupTitle) return item.groupTitle;
-    const person = item.participants?.find(p => p._id !== undefined);
+    const person = item.participants?.find(p => p._id !== myId);
     return person?.fullname || person?.username || "Conversation";
   }
 
@@ -90,7 +96,7 @@ export default function MessagesScreen() {
             </View>
           }
           renderItem={({ item }) => {
-            const person = item.participants?.find(p => p._id !== undefined);
+            const person = item.participants?.find(p => p._id !== myId);
             const unread = Number(item.unreadCount || 0);
             return (
               <Pressable onPress={() => router.push("/conversation/" + encodeURIComponent(item._id))} className="mb-2 flex-row items-center rounded-2xl border p-3" style={{ borderColor: colors.line, backgroundColor: colors.panel }}>
