@@ -1,6 +1,6 @@
 # Mobile Conversion Status
 
-Work branch: mobile/social-graph.
+Work branch: mobile/clips-story-editor (based on the native social-graph work).
 Audit date: 2026-11-04.
 
 ## Completed in this branch
