@@ -13,7 +13,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { api, getApiErrorMessage } from "@/lib/api";
-import { getStoredSession } from "@/lib/session";
+import { getStoredUser } from "@/lib/session";
 import { colors } from "@/theme/colors";
 
 type Person = { _id?: string; username?: string; fullname?: string };
@@ -48,13 +48,16 @@ export default function ConversationScreen() {
   const load = useCallback(async () => {
     setError("");
     try {
-      const session = await getStoredSession();
-      setMyId(session?.user?.id || "");
-      const { data } = await api.get<{ messages?: Message[]; conversation?: Conversation }>(
-        "/api/conversations/" + encodeURIComponent(conversationId) + "/messages",
-      );
-      setMessages(Array.isArray(data.messages) ? data.messages : []);
-      if (data.conversation) setConversation(data.conversation);
+      const [user, conversationResponse, messageResponse] = await Promise.all([
+        getStoredUser(),
+        api.get<{ conversations?: Conversation[] }>("/api/conversations"),
+        api.get<{ messages?: Message[] }>("/api/conversations/" + encodeURIComponent(conversationId) + "/messages"),
+      ]);
+      setMyId(user?.id || "");
+      const found = (conversationResponse.data.conversations || []).find(item => item._id === conversationId);
+      if (!found) throw new Error("This conversation is no longer available.");
+      setConversation(found);
+      setMessages(Array.isArray(messageResponse.data.messages) ? messageResponse.data.messages : []);
     } catch (caught) {
       setError(getApiErrorMessage(caught));
     } finally {
