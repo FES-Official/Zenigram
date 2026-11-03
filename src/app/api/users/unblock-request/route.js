@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { jsonError, jsonOk } from "@/app/lib/api";
 import {
   acceptUnblockRequest,
@@ -16,21 +15,21 @@ import { emitToUsers } from "@/app/lib/socketHub";
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
     const { blockerId, conversationId } = await req.json();
-    if (!blockerId || blockerId === session.user.id) {
+    if (!blockerId || blockerId === userId) {
       return jsonError("Invalid blocker", 400);
     }
 
     const relationship = await getBlockRelationship(
-      session.user.id,
+      userId,
       blockerId,
     );
     if (
       !relationship.blocked ||
       relationship.blockerId !== blockerId ||
-      relationship.blockedUserId !== session.user.id
+      relationship.blockedUserId !== userId
     ) {
       return jsonError("This user is not blocking you", 409);
     }
@@ -39,7 +38,7 @@ export async function POST(req) {
     }
 
     const [requester, blocker] = await Promise.all([
-      getUserById(session.user.id),
+      getUserById(userId),
       getUserById(blockerId),
     ]);
     if (!requester || !blocker) return jsonError("User not found", 404);
@@ -83,10 +82,10 @@ export async function POST(req) {
 
 export async function PATCH(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
     const { requesterId, conversationId, action = "accept" } = await req.json();
-    if (!requesterId || requesterId === session.user.id) {
+    if (!requesterId || requesterId === userId) {
       return jsonError("Invalid requester", 400);
     }
     if (!['accept', 'decline'].includes(action)) {
@@ -94,12 +93,12 @@ export async function PATCH(req) {
     }
     if (action === "decline") {
       const request = await declineUnblockRequest(
-        session.user.id,
+        userId,
         requesterId,
       );
       if (!request) return jsonError("Request not found or expired", 409);
       const [blocker, requester] = await Promise.all([
-        getUserById(session.user.id),
+        getUserById(userId),
         getUserById(requesterId),
       ]);
       if (!blocker || !requester) return jsonError("User not found", 404);
@@ -130,7 +129,7 @@ export async function PATCH(req) {
       return jsonOk({ declined: true });
     }
     const request = await acceptUnblockRequest(
-      session.user.id,
+      userId,
       requesterId,
     );
     if (!request) {
@@ -138,7 +137,7 @@ export async function PATCH(req) {
     }
 
     const [blocker, requester] = await Promise.all([
-      getUserById(session.user.id),
+      getUserById(userId),
       getUserById(requesterId),
     ]);
     if (!blocker || !requester) return jsonError("User not found", 404);

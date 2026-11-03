@@ -1,30 +1,41 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { jsonError, jsonOk } from "@/app/lib/api";
 import {
   createNotification,
   getUserById,
+  getUserRelations,
+  hasPendingSupportRequest,
   toggleSupport,
+  getBlockRelationship,
 } from "@/app/lib/socialStore";
 import { emitToUsers } from "@/app/lib/socketHub";
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
     const { targetUserId } = await req.json();
     if (!targetUserId || typeof targetUserId !== "string") return jsonError("Invalid user", 400);
-    if (targetUserId === session.user.id) {
+    if (targetUserId === userId) {
       return jsonError("You cannot support yourself", 400);
     }
 
     const [currentUser, targetUser] = await Promise.all([
-      getUserById(session.user.id),
+      getUserById(userId),
       getUserById(targetUserId),
     ]);
     if (!currentUser || !targetUser) return jsonError("User not found", 404);
 
-    if (targetUser.ishidden) {
+    const blockRelationship = await getBlockRelationship(currentUser._id, targetUser._id);
+    if (blockRelationship.blocked) return jsonError("This relationship is not available", 404);
+
+    const currentRelations = await getUserRelations(currentUser._id);
+    const alreadySupporting = (currentRelations.supporting || []).includes(String(targetUser._id));
+
+    if (targetUser.ishidden && !alreadySupporting) {
+      const alreadyRequested = await hasPendingSupportRequest(currentUser._id, targetUser._id);
+      if (alreadyRequested) return jsonOk({ requested: true, alreadyPending: true });
+
       await createNotification({
         sender: currentUser._id,
         recipient: targetUser._id,

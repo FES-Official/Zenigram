@@ -13,7 +13,7 @@ type NotificationItem = {
   profilePic?: string;
   status?: string;
   read?: boolean;
-  event?: { conversationId?: string; [key: string]: unknown };
+  event?: { conversationId?: string; requesterId?: string; [key: string]: unknown };
   createdAt?: string;
 };
 
@@ -27,6 +27,11 @@ function description(item: NotificationItem): string {
     case "user_unblocked": return actor + " unblocked you";
     case "message_warning": return "A message you sent received a warning";
     case "support": return actor + " supported your account";
+    case "support_request": return actor + " requested to support your hidden account";
+    case "support_approved": return actor + " was approved to support your account";
+    case "support_rejected": return actor + "'s support request was declined";
+    case "unblock_request": return actor + " asked you to reconsider a block";
+    case "unblock_request_declined": return actor + "'s unblock request was declined";
     case "story_like": return actor + " liked your story";
     case "story_comment": return actor + " replied to your story";
     default: return actor + " sent you a notification";
@@ -38,6 +43,7 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState("");
 
   const load = useCallback(async (refresh = false) => {
     refresh ? setRefreshing(true) : setLoading(true);
@@ -59,6 +65,35 @@ export default function NotificationsScreen() {
     void load();
     return undefined;
   }, [load]));
+
+  const respondToRequest = useCallback(async (item: NotificationItem, action: "accept" | "reject") => {
+    if (busyId) return;
+    setBusyId(item._id);
+    setError("");
+    try {
+      if (item.type === "support_request") {
+        await api.post("/api/support/respond", {
+          notificationId: item._id,
+          action,
+        });
+      } else if (item.type === "unblock_request" && item.event?.requesterId) {
+        await api.patch("/api/users/unblock-request", {
+          requesterId: String(item.event.requesterId),
+          conversationId: item.event.conversationId,
+          action: action === "accept" ? "accept" : "decline",
+        });
+      } else {
+        throw new Error("This request is missing the required account details.");
+      }
+      setItems(current => current.map(entry => entry._id === item._id
+        ? { ...entry, status: action === "accept" ? "approved" : "rejected", read: true }
+        : entry));
+    } catch (caught) {
+      setError(getApiErrorMessage(caught));
+    } finally {
+      setBusyId("");
+    }
+  }, [busyId]);
 
   return (
     <Screen scroll={false}>
@@ -84,18 +119,48 @@ export default function NotificationsScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.rose} />}
           contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
           ListEmptyComponent={<View className="flex-1 items-center justify-center px-7"><MaterialCommunityIcons name="bell-check-outline" size={46} color={colors.muted} /><Text className="mt-4 text-lg font-bold" style={{ color: colors.text }}>You’re all caught up</Text><Text className="mt-2 text-center text-sm" style={{ color: colors.muted }}>New activity will appear here.</Text></View>}
-          renderItem={({ item }) => (
-            <View className="mb-2 flex-row items-center rounded-2xl border p-4" style={{ backgroundColor: colors.panel, borderColor: colors.line }}>
-              <View className="mr-3 h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: colors.wine }}>
-                <MaterialCommunityIcons name={item.type?.includes("message") ? "message-outline" : item.type?.includes("like") ? "heart-outline" : "bell-outline"} size={19} color={colors.rose} />
+          renderItem={({ item }) => {
+            const isPendingSupport = item.type === "support_request" && item.status === "pending";
+            const isPendingUnblock = item.type === "unblock_request" && item.status === "pending";
+            const canRespond = isPendingSupport || isPendingUnblock;
+            return (
+              <View className="mb-3 rounded-2xl border p-4" style={{ backgroundColor: colors.panel, borderColor: colors.line }}>
+                <View className="flex-row items-center">
+                  <View className="mr-3 h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: colors.wine }}>
+                    <MaterialCommunityIcons name={item.type?.includes("message") ? "message-outline" : item.type?.includes("like") ? "heart-outline" : item.type?.includes("block") ? "shield-outline" : "bell-outline"} size={19} color={colors.rose} />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-sm leading-5" style={{ color: colors.text }}>{description(item)}</Text>
+                    <Text className="mt-1 text-xs" style={{ color: colors.muted }}>{item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</Text>
+                  </View>
+                  {!item.read ? <View className="ml-2 h-2 w-2 rounded-full" style={{ backgroundColor: colors.rose }} /> : null}
+                </View>
+                {canRespond ? (
+                  <View className="mt-3 flex-row">
+                    <Pressable
+                      disabled={busyId === item._id}
+                      onPress={() => void respondToRequest(item, "accept")}
+                      className="mr-2 flex-1 items-center rounded-xl py-2.5"
+                      style={{ backgroundColor: colors.crimson, opacity: busyId === item._id ? 0.5 : 1 }}
+                    >
+                      {busyId === item._id ? <ActivityIndicator size="small" color={colors.text} /> : <Text className="text-xs font-bold" style={{ color: colors.text }}>{isPendingUnblock ? "Unblock" : "Accept"}</Text>}
+                    </Pressable>
+                    <Pressable
+                      disabled={busyId === item._id}
+                      onPress={() => void respondToRequest(item, "reject")}
+                      className="flex-1 items-center rounded-xl border py-2.5"
+                      style={{ borderColor: colors.line, opacity: busyId === item._id ? 0.5 : 1 }}
+                    >
+                      <Text className="text-xs font-bold" style={{ color: colors.muted }}>{isPendingUnblock ? "Decline" : "Reject"}</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+                {!canRespond && ["approved", "rejected"].includes(item.status || "") && item.type?.includes("request") ? (
+                  <Text className="mt-2 text-xs font-semibold" style={{ color: colors.muted }}>Request {item.status}</Text>
+                ) : null}
               </View>
-              <View className="flex-1">
-                <Text className="text-sm leading-5" style={{ color: colors.text }}>{description(item)}</Text>
-                <Text className="mt-1 text-xs" style={{ color: colors.muted }}>{item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</Text>
-              </View>
-              {!item.read ? <View className="ml-2 h-2 w-2 rounded-full" style={{ backgroundColor: colors.rose }} /> : null}
-            </View>
-          )}
+            );
+          }}
         />
       )}
     </Screen>

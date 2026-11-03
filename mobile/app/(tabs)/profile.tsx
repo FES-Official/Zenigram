@@ -128,10 +128,34 @@ export default function ProfileScreen() {
             <Text className="mt-2 text-sm leading-6" style={{ color: colors.muted }}>
               Update your public profile and control whether your account is hidden. Existing server-side audience and privacy rules remain in force.
             </Text>
+            <Pressable onPress={() => router.push("/profile/" + encodeURIComponent(username))} className="mt-4 flex-row items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: colors.line }}>
+              <View className="flex-row items-center">
+                <MaterialCommunityIcons name="account-group-outline" size={19} color={colors.rose} />
+                <Text className="ml-2 text-sm font-semibold" style={{ color: colors.text }}>View profile & social circle</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={19} color={colors.muted} />
+            </Pressable>
+
             <Pressable onPress={() => router.push("/profile/edit")} className="mt-4 flex-row items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: colors.line }}>
               <View className="flex-row items-center">
                 <MaterialCommunityIcons name="account-edit-outline" size={19} color={colors.rose} />
                 <Text className="ml-2 text-sm font-semibold" style={{ color: colors.text }}>Edit profile & privacy</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={19} color={colors.muted} />
+            </Pressable>
+
+            <Pressable onPress={() => router.push("/discover")} className="mt-3 flex-row items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: colors.line }}>
+              <View className="flex-row items-center">
+                <MaterialCommunityIcons name="account-search-outline" size={19} color={colors.rose} />
+                <Text className="ml-2 text-sm font-semibold" style={{ color: colors.text }}>Discover creators</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={19} color={colors.muted} />
+            </Pressable>
+
+            <Pressable onPress={() => router.push("/privacy/blocked")} className="mt-3 flex-row items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: colors.line }}>
+              <View className="flex-row items-center">
+                <MaterialCommunityIcons name="account-cancel-outline" size={19} color={colors.rose} />
+                <Text className="ml-2 text-sm font-semibold" style={{ color: colors.text }}>Blocked accounts</Text>
               </View>
               <MaterialCommunityIcons name="chevron-right" size={19} color={colors.muted} />
             </Pressable>

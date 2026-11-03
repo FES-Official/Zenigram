@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { EXPLORATION_ACHIEVEMENTS, LAST_HOURS_GOAL } from "@/app/lib/progression";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
@@ -14,7 +15,7 @@ export async function POST(req) {
     if (!username) return NextResponse.json({ message: "Username is required" }, { status: 400 });
 
     let user = await getUserByUsername(username);
-    if (!user) {
+    if (!user && !req.headers.get("authorization")) {
       const session = await getServerSession(authOptions);
       if (session?.user?.id && normalizeString(session.user.name).toLowerCase() === username.toLowerCase()) {
         user = await getUserById(session.user.id);
@@ -22,20 +23,19 @@ export async function POST(req) {
     }
     if (!user) return NextResponse.json({ message: "User not found" }, { status: 404 });
 
-    const viewerSession = await getServerSession(authOptions);
+    const viewerId = await getAuthenticatedUserId(req);
     const [relations, viewerRelations] = await Promise.all([
       getUserRelations(user._id),
-      viewerSession?.user?.id
-        ? getUserRelations(viewerSession.user.id)
+      viewerId
+        ? getUserRelations(viewerId)
         : Promise.resolve({ blockedUsers: [], blockedByUsers: [], supporting: [] }),
     ]);
 
-    if (viewerSession?.user?.id && String(user._id) !== viewerSession.user.id) {
-      const blocked = viewerRelations.blockedUsers.includes(String(user._id)) || relations.blockedUsers.includes(viewerSession.user.id);
+    if (viewerId && String(user._id) !== viewerId) {
+      const blocked = viewerRelations.blockedUsers.includes(String(user._id)) || relations.blockedUsers.includes(viewerId);
       if (blocked) return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
 
-    const viewerId = viewerSession?.user?.id || "";
     const isOwnProfile = String(user._id) === String(viewerId);
     if (!isOwnProfile && viewerId) await recordProfileVisit(user._id, viewerId);
 

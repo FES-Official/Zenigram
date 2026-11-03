@@ -1,6 +1,5 @@
-import { escapeRegex, jsonError, jsonOk, normalizeString } from "@/app/lib/api";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
+import { jsonError, jsonOk, normalizeString } from "@/app/lib/api";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { getUserRelations, searchUsers } from "@/app/lib/socialStore";
 
 export async function GET(req) {
@@ -9,11 +8,11 @@ export async function GET(req) {
     const query = normalizeString(searchParams.get("q")).slice(0, 50);
     if (!query) return jsonOk({ users: [] });
 
-    const session = await getServerSession(authOptions);
+    const viewerId = await getAuthenticatedUserId(req);
     const [users, relations] = await Promise.all([
       searchUsers(query, 16),
-      session?.user?.id
-        ? getUserRelations(session.user.id)
+      viewerId
+        ? getUserRelations(viewerId)
         : Promise.resolve({ blockedUsers: [], blockedByUsers: [] }),
     ]);
     return jsonOk({
@@ -27,7 +26,9 @@ export async function GET(req) {
         .map((user) => ({
           _id: user._id,
           username: user.username,
-          profilePic: user.profilePic,
+          fullname: user.fullname || "",
+          profilePic: user.profilePic || "",
+          ishidden: Boolean(user.ishidden),
         })),
     });
   } catch (error) {

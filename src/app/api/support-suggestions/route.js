@@ -1,14 +1,13 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { jsonError, jsonOk } from "@/app/lib/api";
 import { listSupportSuggestions } from "@/app/lib/socialStore";
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(request);
+    if (!userId) return jsonError("Unauthorized", 401);
     return jsonOk({
-      suggestions: await listSupportSuggestions(session.user.id, 5),
+      suggestions: await listSupportSuggestions(userId, 5),
     });
   } catch (error) {
     console.error("Support suggestions error:", error);
