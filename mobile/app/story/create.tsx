@@ -105,7 +105,12 @@ export default function CreateStoryScreen() {
   const activeFilter=FILTERS.find(item=>item.id===filter)||FILTERS[0];
 
   function addAssets(next:ImagePicker.ImagePickerAsset[]){
+    const nextCount=Math.min(MAX_IMAGES,assets.length+next.length);
     setAssets(current=>[...current,...next].slice(0,MAX_IMAGES));
+    if(nextCount>1){
+      const suggested=nextCount===2?"duo":nextCount===3?"hero":nextCount===4?"quad":nextCount===5?"mosaic":"six";
+      setLayout(suggested);
+    }else setLayout("one");
     setError("");
     if(next.length>MAX_IMAGES-assets.length)setError("A story collage can contain up to 6 images.");
   }
