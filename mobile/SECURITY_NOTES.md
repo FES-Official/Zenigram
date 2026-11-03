@@ -6,7 +6,7 @@
 - Configure DynamoDB TTL on expiresAt to clean up expired records. Application checks, not TTL timing, enforce token expiry.
 - Expo SecureStore is used for access tokens, refresh tokens, and the locally cached profile; AsyncStorage is not used for credentials.
 - The shared request-auth helper supports bearer tokens only on explicitly converted route handlers. It does not globally alter all API routes or bypass web cookie/CSRF behavior.
-- Login/refresh rate limiting and abuse monitoring are still required before public release.
+- Login uses a DynamoDB-backed fixed-window limit keyed by HMAC digests (8 attempts per IP/identifier and 40 per IP per 15 minutes). Refresh-endpoint rate limiting and broader abuse monitoring are still required before public release.
 - AWS credentials are never included in the application bundle. Media access continues through server-side authorization and short-lived S3 upload/read URLs.
 - The lockfile overrides decode-uri-component to 0.5.1, which includes the fixes for advisories affecting releases through 0.5.0.
 - The current Expo SDK 57 dependency audit reports remaining high-severity issues in the Expo CLI / Zod build-tool dependency chain, plus moderate and low transitive findings. npm's suggested full fix upgrades Expo to SDK 58 (a major SDK and React Native change). NativeWind 4.2.7 currently documents SDK 57 as its tested Expo target, so this foundation does not force an unverified SDK 58 / styling-toolchain upgrade.
