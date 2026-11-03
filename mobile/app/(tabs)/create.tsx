@@ -157,12 +157,25 @@ export default function CreateScreen() {
 
   return (
     <Screen>
-      <View className="mb-6">
-        <Text className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.rose }}>MAKE SOMETHING YOURS</Text>
-        <Text className="mt-1 text-3xl font-black" style={{ color: colors.text }}>Create a post</Text>
-        <Text className="mt-2 text-sm leading-6" style={{ color: colors.muted }}>
-          Share a moment with your circle or the wider Zenigram community.
-        </Text>
+      <View className="mb-6 flex-row items-center justify-between">
+        <View className="flex-1 pr-3">
+          <Text className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.rose }}>MAKE SOMETHING YOURS</Text>
+          <Text className="mt-1 text-3xl font-black" style={{ color: colors.text }}>Create a post</Text>
+          <Text className="mt-2 text-sm leading-6" style={{ color: colors.muted }}>
+            Share a moment with your circle or the wider Zenigram community.
+          </Text>
+        </View>
+        <Pressable
+          onPress={() => router.push("/create-clip")}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel="Create a clip"
+          className="items-center justify-center rounded-2xl px-3 py-3"
+          style={{ backgroundColor: colors.wine, borderWidth: 1, borderColor: colors.line }}
+        >
+          <MaterialCommunityIcons name="movie-plus-outline" size={20} color={colors.rose} />
+          <Text className="mt-1 text-xs font-bold" style={{ color: colors.rose }}>Clip</Text>
+        </Pressable>
       </View>
 
       {error ? (
