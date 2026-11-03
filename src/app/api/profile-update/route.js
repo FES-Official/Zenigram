@@ -18,13 +18,18 @@ export async function POST(req) {
     if (!userId) return jsonError("Unauthorized", 401);
 
     const data = await req.json();
+    const currentUser = await getUserById(userId);
+    if (!currentUser) return jsonError("User not found", 404);
+
     const username = normalizeString(data.username).toLowerCase();
     const bio = normalizeString(data.bio);
     const website = normalizeString(data.website);
-    const gender = normalizeString(data.gender);
-    const mobile = normalizeString(data.mobile);
-    const currentUser = await getUserById(userId);
-    if (!currentUser) return jsonError("User not found", 404);
+    const gender = data.gender === undefined
+      ? String(currentUser.gender || "")
+      : normalizeString(data.gender);
+    const mobile = data.mobile === undefined
+      ? String(currentUser.mobile || "")
+      : normalizeString(data.mobile);
 
     if (!/^[a-z0-9._]{3,24}$/.test(username)) {
       return jsonError("Enter a valid username", 400);
