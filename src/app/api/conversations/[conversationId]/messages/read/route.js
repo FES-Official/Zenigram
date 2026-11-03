@@ -1,13 +1,12 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { markMessagesRead } from "@/app/lib/socialStore";
 import { emitToUsers } from "@/app/lib/socketHub";
 
 export async function PATCH(req, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -24,7 +23,7 @@ export async function PATCH(req, { params }) {
     ];
     const result = await markMessagesRead(
       conversationId,
-      session.user.id,
+      userId,
       messageIds,
     );
     if (!result) {
@@ -37,7 +36,7 @@ export async function PATCH(req, { params }) {
     if (result.messageIds.length) {
       emitToUsers(result.conversation.participantIds, "message:read", {
         conversationId,
-        readerId: session.user.id,
+        readerId: userId,
         messageIds: result.messageIds,
       });
     }
