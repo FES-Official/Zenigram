@@ -15,7 +15,7 @@ export async function POST(req) {
     if (!username) return NextResponse.json({ message: "Username is required" }, { status: 400 });
 
     let user = await getUserByUsername(username);
-    if (!user) {
+    if (!user && !req.headers.get("authorization")) {
       const session = await getServerSession(authOptions);
       if (session?.user?.id && normalizeString(session.user.name).toLowerCase() === username.toLowerCase()) {
         user = await getUserById(session.user.id);
