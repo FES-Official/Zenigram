@@ -26,7 +26,7 @@ type Message = {
   media?: Array<{ type?: string; url?: string }>;
   reactions?: Array<{ user?: string; emoji?: string }>;
 };
-type Conversation = { _id: string; participants?: Person[]; groupTitle?: string; blockState?: { blocked?: boolean } };
+type Conversation = { _id: string; participants?: Person[]; groupTitle?: string; blockState?: { blocked?: boolean; blockerId?: string; blockedUserId?: string; request?: { status?: string } | null } };
 
 function senderId(sender: Message["sender"]): string {
   if (typeof sender === "string") return sender;
@@ -43,6 +43,7 @@ export default function ConversationScreen() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [requestingUnblock, setRequestingUnblock] = useState(false);
   const listRef = useRef<FlatList<Message>>(null);
 
   const load = useCallback(async () => {
@@ -66,6 +67,31 @@ export default function ConversationScreen() {
   }, [conversationId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  async function requestUnblock() {
+    const blockerId = conversation?.blockState?.blockerId;
+    if (!blockerId || blockerId === myId || requestingUnblock) return;
+    setRequestingUnblock(true);
+    setError("");
+    try {
+      const { data } = await api.post<{ request?: { status?: string } }>(
+        "/api/users/unblock-request",
+        { blockerId, conversationId },
+      );
+      setConversation(current => current ? {
+        ...current,
+        blockState: {
+          ...current.blockState,
+          blocked: true,
+          request: data.request || { status: "pending" },
+        },
+      } : current);
+    } catch (caught) {
+      setError(getApiErrorMessage(caught));
+    } finally {
+      setRequestingUnblock(false);
+    }
+  }
 
   async function send() {
     const text = draft.trim();
@@ -140,6 +166,28 @@ export default function ConversationScreen() {
         {conversation?.blockState?.blocked ? (
           <View className="my-2 rounded-2xl border p-4" style={{ backgroundColor: colors.panel, borderColor: colors.danger }}>
             <Text className="text-sm font-semibold" style={{ color: colors.danger }}>Messaging is unavailable while this account is blocked.</Text>
+            {conversation.blockState.blockerId && conversation.blockState.blockerId !== myId ? (
+              <View className="mt-3">
+                {conversation.blockState.request?.status === "pending" ? (
+                  <View className="flex-row items-center">
+                    <MaterialCommunityIcons name="clock-outline" size={17} color={colors.rose} />
+                    <Text className="ml-2 text-xs font-semibold" style={{ color: colors.rose }}>Unblock request sent · awaiting response</Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    onPress={() => void requestUnblock()}
+                    disabled={requestingUnblock}
+                    className="self-start flex-row items-center rounded-xl px-4 py-2.5"
+                    style={{ backgroundColor: colors.wine, opacity: requestingUnblock ? 0.55 : 1 }}
+                  >
+                    {requestingUnblock ? <ActivityIndicator size="small" color={colors.rose} /> : <MaterialCommunityIcons name="handshake-outline" size={17} color={colors.rose} />}
+                    <Text className="ml-2 text-xs font-bold" style={{ color: colors.rose }}>{requestingUnblock ? "Sending..." : "Request to unblock"}</Text>
+                  </Pressable>
+                )}
+              </View>
+            ) : conversation.blockState.blockerId === myId && conversation.blockState.request?.status === "pending" ? (
+              <Text className="mt-2 text-xs" style={{ color: colors.muted }}>An unblock request is waiting in your notifications.</Text>
+            ) : null}
           </View>
         ) : (
           <View className="mt-2 flex-row items-end rounded-2xl border p-2" style={{ backgroundColor: colors.panel, borderColor: colors.line }}>
