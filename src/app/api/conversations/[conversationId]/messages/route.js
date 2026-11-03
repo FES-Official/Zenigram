@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import {
   createMessage,
   getBlockRelationship,
@@ -25,21 +24,21 @@ function normalizeMedia(items) {
     .filter((item) => item.publicId && MESSAGE_MEDIA_TYPES.has(item.type));
 }
 
-export async function GET(_req, { params }) {
+export async function GET(req, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { conversationId } = await params;
-    const result = await listMessages(conversationId, session.user.id);
+    const result = await listMessages(conversationId, userId);
     if (!result) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     if (result.unreadIds.length) {
       emitToUsers(result.conversation.participantIds, "message:read", {
         conversationId,
-        readerId: session.user.id,
+        readerId: userId,
         messageIds: result.unreadIds,
       });
     }
@@ -55,23 +54,23 @@ export async function GET(_req, { params }) {
 
 export async function POST(req, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { conversationId } = await params;
     const { text, media, replyTo, forwardFrom } = await req.json();
     const cleanText = typeof text === "string" ? text.trim() : "";
-    const conversation = await getConversation(conversationId, session.user.id);
+    const conversation = await getConversation(conversationId, userId);
     if (!conversation) {
       return NextResponse.json({ error: "Invalid conversation" }, { status: 400 });
     }
     const recipientIds = conversation.participantIds.filter(
-      (id) => id !== session.user.id,
+      (id) => id !== userId,
     );
     const relationships = await Promise.all(
       recipientIds.map((recipientId) =>
-        getBlockRelationship(session.user.id, recipientId),
+        getBlockRelationship(userId, recipientId),
       ),
     );
     if (relationships.some((relationship) => relationship.blocked)) {
@@ -83,7 +82,7 @@ export async function POST(req, { params }) {
     const requestedMedia = normalizeMedia(media);
     const cleanMedia = await Promise.all(
       requestedMedia.map(async (item) => {
-        const object = await verifyS3Object(item.publicId, session.user.id);
+        const object = await verifyS3Object(item.publicId, userId);
         if (!object) throw new Error("Message media could not be verified");
         const validType =
           ((item.type === "image" || item.type === "drawing") && object.contentType.startsWith("image/")) ||
@@ -95,7 +94,7 @@ export async function POST(req, { params }) {
     );
     let forwarded = null;
     if (forwardFrom) {
-      forwarded = await getMessage(forwardFrom, session.user.id);
+      forwarded = await getMessage(forwardFrom, userId);
     }
     if (
       (!cleanText && cleanMedia.length === 0 && !forwarded) ||
@@ -105,7 +104,7 @@ export async function POST(req, { params }) {
     }
     const message = await createMessage({
       conversationId,
-      senderId: session.user.id,
+      senderId: userId,
       text: forwarded?.message.text || cleanText,
       media: forwarded?.message.media?.length
         ? forwarded.message.media
