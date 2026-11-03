@@ -15,9 +15,9 @@ Audit date: 2026-11-03.
 - Added a native Feed Control Center for feed mode, source weights, topic weights, and topic mute/unmute using existing preference endpoints.
 - Added native post creation with multi-photo selection, caption/topics/audience controls, signed S3 uploads, progress reporting and failed-upload cleanup.
 - Added native post comments/replies and comment likes, plus feed post like/save actions.
-- Added native vertical Clips playback, likes/views/saves/interest feedback, comments/replies and a video creator using resumable multipart S3 upload.
+- Added native vertical Clips playback, likes/views/saves/interest feedback, comments/replies, a saved-clips library with visibility checks, and a single-video creator using resumable multipart S3 upload.
 - Added a native geotagged image Story composer, Story viewer/engagement, Story comments/replies, and Stories Globe map/discovery.
-- Enabled bearer auth for the story, clip, conversation/message, profile-update and notification API families while retaining NextAuth cookie auth for the web app.
+- Enabled bearer auth for the story, clip (including saved clips), conversation/message, profile-update and notification API families while retaining NextAuth cookie auth for the web app.
 - Added native conversation inbox and text chat with server-side read receipt updates; manual refresh is currently the fallback while persistent realtime is not connected.
 - Added native notification list/read state and profile editing including hidden-account toggle.
 - Connected profile/progression reads and native sign-out.
@@ -36,7 +36,7 @@ Audit date: 2026-11-03.
 - A distributed fixed-window limiter now protects login (8 attempts per IP/identifier and 40 per IP per 15 minutes); refresh-endpoint limiting and abuse monitoring are still required before public exposure.
 - Logout-all, device session management, registration, verification, password recovery, Google/Apple native OAuth and account recovery are not implemented.
 - Messaging still needs realtime Socket.IO on a persistent host, media/drawing attachments, replies/forwarding/reactions and group workflows in the native UI.
-- Clips need the full multi-asset editor (timeline, trim, text layers, filters and transitions), while Stories need full editor parity and video-story playback.
+- Clips currently publish one selected video with a basic timeline; the full multi-asset editor (trim, text layers, filters and transitions) remains outstanding. Stories also need full editor parity and video-story playback.
 - Social graph follow/unfollow, block/unblock and unblock-request workflows, complete account privacy controls, search, saved collections, Z+ security/device sessions, missions, supporter milestone banners and legal/privacy screens still need native UI and route-by-route authorization work.
 - Additional route families still use NextAuth cookie auth and have not yet been enabled for mobile bearer tokens.
 - No automated parity, security, accessibility, performance or end-to-end device tests have been run yet.
