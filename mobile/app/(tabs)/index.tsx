@@ -5,6 +5,7 @@ import {
   Image,
   Pressable,
   RefreshControl,
+  ScrollView,
   Text,
   View,
 } from "react-native";
@@ -33,6 +34,12 @@ type FeedPost = {
   user?: { username?: string; fullname?: string; profilePic?: string };
 };
 type FeedResponse = { post?: FeedPost[]; feedPreferences?: FeedPreferences };
+type StoryItem = {
+  _id: string;
+  caption?: string;
+  userId?: { _id?: string; username?: string; fullname?: string; profilePic?: string };
+};
+type StoryFeedResponse = { stories?: StoryItem[] };
 
 const MODES: Array<{ id: FeedMode; label: string }> = [
   { id: "balanced", label: "For you" },
@@ -144,6 +151,7 @@ function PostCard({
 
 export default function FeedScreen() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [stories, setStories] = useState<StoryItem[]>([]);
   const [mode, setMode] = useState<FeedMode>("balanced");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -167,11 +175,24 @@ export default function FeedScreen() {
     }
   }, []);
 
+  const loadStories = useCallback(async () => {
+    try {
+      const { data } = await api.get<StoryFeedResponse>("/api/story-upload", {
+        params: { tab: "all", limit: 24 },
+      });
+      setStories(Array.isArray(data?.stories) ? data.stories : []);
+    } catch {
+      // A story-feed outage should not block the main ranked feed.
+      setStories([]);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       void loadFeed(true);
+      void loadStories();
       return undefined;
-    }, [loadFeed]),
+    }, [loadFeed, loadStories]),
   );
 
   const updatePost = useCallback((postId: string, patch: Partial<FeedPost>) => {
@@ -242,6 +263,41 @@ export default function FeedScreen() {
         </View>
       </View>
 
+      <View className="mb-6">
+        <View className="mb-3 flex-row items-center justify-between">
+          <Text className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.muted }}>Stories</Text>
+          <Pressable onPress={() => router.push("/story-globe")} className="flex-row items-center">
+            <MaterialCommunityIcons name="earth" size={15} color={colors.rose} />
+            <Text className="ml-1 text-xs font-semibold" style={{ color: colors.rose }}>Stories Globe</Text>
+          </Pressable>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 12 }}>
+          <Pressable onPress={() => router.push("/story/create")} className="mr-3 w-16 items-center">
+            <View className="h-16 w-16 items-center justify-center rounded-full border-2" style={{ borderColor: colors.crimson, backgroundColor: colors.wine }}>
+              <MaterialCommunityIcons name="plus" size={25} color={colors.rose} />
+            </View>
+            <Text numberOfLines={1} className="mt-2 text-xs font-semibold" style={{ color: colors.text }}>Your story</Text>
+          </Pressable>
+          {stories.map(story => {
+            const username = story.userId?.username || "creator";
+            return (
+              <Pressable key={story._id} onPress={() => router.push("/story/" + encodeURIComponent(story._id))} className="mr-3 w-16 items-center">
+                <View className="h-16 w-16 items-center justify-center overflow-hidden rounded-full border-2 p-1" style={{ borderColor: colors.crimson }}>
+                  {story.userId?.profilePic ? (
+                    <Image source={{ uri: story.userId.profilePic }} className="h-full w-full rounded-full" />
+                  ) : (
+                    <View className="h-full w-full items-center justify-center rounded-full" style={{ backgroundColor: colors.wine }}>
+                      <Text className="text-lg font-bold" style={{ color: colors.rose }}>{username.slice(0,1).toUpperCase()}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text numberOfLines={1} className="mt-2 text-xs" style={{ color: colors.muted }}>{username}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
       <View className="mb-5">
         <View className="mb-2 flex-row items-center justify-between">
           <Text className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.muted }}>Feed mode</Text>
@@ -266,7 +322,7 @@ export default function FeedScreen() {
         </View>
       </View>
     </View>
-  ), [loadFeed, mode]);
+  ), [loadFeed, mode, stories]);
 
   if (loading) {
     return (
