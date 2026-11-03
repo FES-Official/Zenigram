@@ -126,8 +126,15 @@ export default function ProfileScreen() {
           <View className="mt-4 rounded-3xl border p-5" style={{ backgroundColor: colors.panel, borderColor: colors.line }}>
             <Text className="text-lg font-bold" style={{ color: colors.text }}>Account & privacy</Text>
             <Text className="mt-2 text-sm leading-6" style={{ color: colors.muted }}>
-              Profile editing, hidden-account controls, blocking, saved content, supporter milestones, and Z+ security settings remain in the migration scope. These native screens will be connected in the next feature passes.
+              Update your public profile and control whether your account is hidden. Existing server-side audience and privacy rules remain in force.
             </Text>
+            <Pressable onPress={() => router.push("/profile/edit")} className="mt-4 flex-row items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: colors.line }}>
+              <View className="flex-row items-center">
+                <MaterialCommunityIcons name="account-edit-outline" size={19} color={colors.rose} />
+                <Text className="ml-2 text-sm font-semibold" style={{ color: colors.text }}>Edit profile & privacy</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={19} color={colors.muted} />
+            </Pressable>
           </View>
         </>
       )}
