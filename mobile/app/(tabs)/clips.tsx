@@ -277,9 +277,14 @@ export default function ClipsScreen() {
           <Text className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.rose }}>SHORT FORM</Text>
           <Text className="mt-1 text-2xl font-black" style={{ color: colors.text }}>Clips</Text>
         </View>
-        <Pressable onPress={() => void loadClips(true)} disabled={refreshing} className="h-10 w-10 items-center justify-center rounded-full border" style={{ borderColor: colors.line, backgroundColor: colors.panel }}>
-          {refreshing ? <ActivityIndicator color={colors.rose} /> : <MaterialCommunityIcons name="refresh" size={20} color={colors.rose} />}
-        </Pressable>
+        <View className="flex-row items-center">
+          <Pressable onPress={() => router.push("/clip/create")} className="mr-2 h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: colors.wine }} accessibilityLabel="Create a clip">
+            <MaterialCommunityIcons name="plus" size={21} color={colors.rose} />
+          </Pressable>
+          <Pressable onPress={() => void loadClips(true)} disabled={refreshing} className="h-10 w-10 items-center justify-center rounded-full border" style={{ borderColor: colors.line, backgroundColor: colors.panel }}>
+            {refreshing ? <ActivityIndicator color={colors.rose} /> : <MaterialCommunityIcons name="refresh" size={20} color={colors.rose} />}
+          </Pressable>
+        </View>
       </View>
 
       {error ? <Text className="mb-2 text-xs" style={{ color: colors.danger }}>{error}</Text> : null}
