@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { cookies } from "next/headers";
-import { authOptions } from "@/app/lib/auth";
 import { jsonError, jsonOk, normalizeString } from "@/app/lib/api";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { verifyS3Object } from "@/app/lib/s3Storage";
 import { createPost, getUserById, getUserRelations } from "@/app/lib/socialStore";
 import { listVisiblePosts, setContentAudience } from "@/app/lib/audienceStore";
@@ -16,9 +15,9 @@ const ASPECT_RATIOS = new Set(["square", "portrait", "landscape"]);
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
-    const user = await getUserById(session.user.id);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
+    const user = await getUserById(userId);
     if (!user) return jsonError("User not found", 404);
 
     const body = await req.json();
@@ -40,7 +39,7 @@ export async function POST(req) {
     if (!caption || caption.length > 2200) return jsonError("Caption required", 400);
     if (!requestedMedia.length) return jsonError("Media is required", 400);
 
-    const verified = await Promise.all(requestedMedia.map((item) => verifyS3Object(item.key, session.user.id)));
+    const verified = await Promise.all(requestedMedia.map((item) => verifyS3Object(item.key, userId)));
     if (verified.some((item) => !item)) return jsonError("One or more S3 objects could not be verified", 400);
     const mediaItems = verified.map((item, index) => {
       const type = requestedMedia[index].type;
@@ -60,12 +59,10 @@ export async function POST(req) {
   }
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
-
-    const viewerId = String(session.user.id);
+    const viewerId = await getAuthenticatedUserId(request);
+    if (!viewerId) return jsonError("Unauthorized", 401);
     const [user, relations] = await Promise.all([
       getUserById(viewerId),
       getUserRelations(viewerId),
