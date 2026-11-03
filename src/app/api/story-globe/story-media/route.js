@@ -1,6 +1,4 @@
-import { getServerSession } from "next-auth";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { authOptions } from "@/app/lib/auth";
 import { getStory } from "@/app/lib/storyStore";
 import {
   getS3Client,
@@ -8,6 +6,7 @@ import {
   getS3KeyFromUrl,
 } from "@/app/lib/s3Storage";
 import { getUserById, getUserRelations } from "@/app/lib/socialStore";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +37,10 @@ export async function GET(req) {
       return new Response("Missing storyId", { status: 400 });
     }
 
+    const viewerIdValue = await getAuthenticatedUserId(req);
+    if (req.headers.get("authorization") && !viewerIdValue) {
+      return new Response("Unauthorized", { status: 401 });
+    }
     const story = await getStory(storyId);
     if (!story || getStoryExpiry(story) <= Date.now()) {
       return new Response("Story not found or expired", { status: 404 });
@@ -48,8 +51,7 @@ export async function GET(req) {
       return new Response("Story owner not found", { status: 404 });
     }
 
-    const session = await getServerSession(authOptions);
-    const viewerId = String(session?.user?.id || "");
+    const viewerId = String(viewerIdValue || "");
     const [owner, relations] = await Promise.all([
       getUserById(ownerId),
       viewerId
