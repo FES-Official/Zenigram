@@ -27,6 +27,7 @@ type PublicProfile = {
   _id: string;
   username: string;
   fullname?: string;
+  posts?: unknown[];
   bio?: string;
   website?: string;
   profilePic?: string;
@@ -260,7 +261,7 @@ export default function PublicProfileScreen() {
 
             <View className="mt-6 flex-row border-t pt-5" style={{ borderColor: colors.line }}>
               {([
-                ["Posts", 0],
+                ["Posts", profile.posts?.length || 0],
                 ["Supporters", profile.supporters?.length || 0],
                 ["Supporting", profile.supporting?.length || 0],
                 ["Close ones", profile.closeOnes?.length || 0],
