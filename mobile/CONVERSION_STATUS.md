@@ -26,7 +26,7 @@ Audit date: 2026-11-03.
 
 - These source changes have not yet been built or run on an iOS Simulator, physical iPhone, Android emulator, or Android device in this session.
 - The Vercel web build is not a native React Native build. A preview deployment of the Next.js API does not establish that the Android/iOS app compiles.
-- Login/refresh rate limiting and abuse monitoring must be added before public exposure.
+- A distributed fixed-window limiter now protects login (8 attempts per IP/identifier and 40 per IP per 15 minutes); refresh-endpoint limiting and abuse monitoring are still required before public exposure.
 - Logout-all, device session management, registration, verification, password recovery, Google/Apple native OAuth and account recovery are not implemented.
 - Clips, story editor/viewer/Globe, native video playback, native camera/gallery, publishing, likes/comments/shares/saves, messaging/drawing, Socket.IO realtime, notifications, search, full profile editing, hidden/block controls, Z+ security, collections, missions and supporter banners are not yet ported/connected.
 - Additional route families still use NextAuth cookie auth and have not yet been enabled for mobile bearer tokens.
