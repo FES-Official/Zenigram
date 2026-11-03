@@ -1,9 +1,9 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { jsonError, jsonOk } from "@/app/lib/api";
 import {
   createNotification,
   getUserById,
+  getBlockRelationship,
   toggleSupport,
   updateNotification,
 } from "@/app/lib/socialStore";
@@ -11,8 +11,8 @@ import { emitToUsers } from "@/app/lib/socketHub";
 
 export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
 
     const body = await req.json();
     const notificationId = body?.notificationId;
@@ -26,7 +26,7 @@ export async function POST(req) {
 
     const status = action === "accept" ? "approved" : "rejected";
     const notification = await updateNotification(
-      session.user.id,
+      userId,
       notificationId,
       { status, read: true },
     );
@@ -35,7 +35,7 @@ export async function POST(req) {
     }
 
     const [currentUser, senderUser] = await Promise.all([
-      getUserById(session.user.id),
+      getUserById(userId),
       getUserById(notification.sender),
     ]);
     if (!currentUser || !senderUser) {
@@ -43,6 +43,8 @@ export async function POST(req) {
     }
 
     if (action === "accept") {
+      const relationship = await getBlockRelationship(currentUser._id, senderUser._id);
+      if (relationship.blocked) return jsonError("This relationship is not available", 404);
       await toggleSupport(senderUser._id, currentUser._id);
     }
     await createNotification({
