@@ -1,14 +1,17 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Pressable,
   RefreshControl,
+  Platform,
   Text,
   View,
 } from "react-native";
 import { useFocusEffect, router } from "expo-router";
+import Constants from "expo-constants";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { api, getApiErrorMessage } from "@/lib/api";
@@ -23,6 +26,7 @@ type GlobeStory = {
   latitude?: number;
   longitude?: number;
   location?: { lat?: number; lng?: number; label?: string; name?: string };
+  mediaUrl?: string;
   userId?: { _id?: string; username?: string; fullname?: string; profilePic?: string; ishidden?: boolean };
 };
 type GlobeResponse = {
@@ -39,6 +43,35 @@ const TABS: Array<{ id: GlobeTab; title: string; icon: keyof typeof MaterialComm
   { id: "close", title: "Close Ones", icon: "heart-multiple" },
   { id: "supporting", title: "Supporting", icon: "account-heart" },
 ];
+
+function storyCoordinates(story: GlobeStory) {
+  const latitude = Number(story.latitude ?? story.location?.lat);
+  const longitude = Number(story.longitude ?? story.location?.lng);
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) return null;
+  return { latitude, longitude };
+}
+
+function getInitialStoryRegion(stories: GlobeStory[]) {
+  const points = stories.map(storyCoordinates).filter(Boolean) as Array<{ latitude: number; longitude: number }>;
+  if (!points.length) {
+    return { latitude: 18, longitude: 0, latitudeDelta: 110, longitudeDelta: 180 };
+  }
+  const lats = points.map(point => point.latitude);
+  const lngs = points.map(point => point.longitude);
+  return {
+    latitude: (Math.min(...lats) + Math.max(...lats)) / 2,
+    longitude: (Math.min(...lngs) + Math.max(...lngs)) / 2,
+    latitudeDelta: Math.min(120, Math.max(0.5, Math.max(...lats) - Math.min(...lats) + 0.8)),
+    longitudeDelta: Math.min(160, Math.max(0.5, Math.max(...lngs) - Math.min(...lngs) + 0.8)),
+  };
+}
 
 function StoryCard({ story }: { story: GlobeStory }) {
   const username = story.userId?.username || "zenigram_user";
@@ -85,6 +118,7 @@ function StoryCard({ story }: { story: GlobeStory }) {
 export default function StoryGlobeScreen() {
   const [tab, setTab] = useState<GlobeTab>("all");
   const [stories, setStories] = useState<GlobeStory[]>([]);
+  const [selectedStory, setSelectedStory] = useState<GlobeStory | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -103,6 +137,7 @@ export default function StoryGlobeScreen() {
       const { data } = await api.get<GlobeResponse>("/api/story-globe", { params });
       const incoming = Array.isArray(data.stories) ? data.stories : [];
       setStories(current => append ? [...current, ...incoming] : incoming);
+      if (!append) setSelectedStory(incoming[0] || null);
       setCursor(data.nextCursor || null);
       setHasMore(Boolean(data.hasMore && data.nextCursor));
     } catch (caught) {
@@ -130,6 +165,97 @@ export default function StoryGlobeScreen() {
     setLoading(true);
     void load(nextTab);
   }
+
+  const region = useMemo(() => getInitialStoryRegion(stories), [stories]);
+  const hasAndroidMapsKey = Boolean(Constants.expoConfig?.extra?.mapsConfigured);
+  const canShowNativeMap = Platform.OS !== "android" || hasAndroidMapsKey;
+  const locatedStories = useMemo(
+    () => stories.filter(story => storyCoordinates(story)),
+    [stories],
+  );
+
+  const mapHeader = (
+    <View className="mb-4">
+      {canShowNativeMap ? (
+        locatedStories.length ? (
+          <View className="mb-3 overflow-hidden rounded-3xl border" style={{ height: 300, borderColor: colors.line, backgroundColor: colors.panel }}>
+            <MapView
+              key={tab + ":" + stories.length}
+              style={{ flex: 1 }}
+              provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
+              initialRegion={region}
+              showsCompass
+              showsScale
+              toolbarEnabled={false}
+            >
+              {locatedStories.map(story => {
+                const coordinate = storyCoordinates(story);
+                if (!coordinate) return null;
+                return (
+                  <Marker
+                    key={story._id}
+                    coordinate={coordinate}
+                    title={story.userId?.fullname || story.userId?.username || "Zenigram creator"}
+                    description={story.caption || "Open story"}
+                    pinColor="#B82E50"
+                    onPress={() => setSelectedStory(story)}
+                    onCalloutPress={() => router.push("/story/" + encodeURIComponent(story._id))}
+                  />
+                );
+              })}
+            </MapView>
+            <View className="absolute left-3 top-3 rounded-full px-3 py-2" style={{ backgroundColor: "rgba(18,8,13,0.82)" }} pointerEvents="none">
+              <Text className="text-xs font-bold" style={{ color: "#FFFFFF" }}>
+                {locatedStories.length} location {locatedStories.length === 1 ? "pin" : "pins"}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View className="mb-3 items-center justify-center rounded-3xl border px-6 py-8" style={{ height: 190, borderColor: colors.line, backgroundColor: colors.panel }}>
+            <MaterialCommunityIcons name="earth" size={40} color={colors.rose} />
+            <Text className="mt-3 text-base font-bold" style={{ color: colors.text }}>The globe is quiet right now</Text>
+            <Text className="mt-2 text-center text-xs leading-5" style={{ color: colors.muted }}>
+              Stories with location coordinates will appear as pins here.
+            </Text>
+          </View>
+        )
+      ) : (
+        <View className="mb-3 rounded-3xl border p-4" style={{ borderColor: colors.line, backgroundColor: colors.panel }}>
+          <View className="flex-row items-center">
+            <MaterialCommunityIcons name="map-alert-outline" size={22} color={colors.rose} />
+            <Text className="ml-2 text-sm font-bold" style={{ color: colors.text }}>Android map key required</Text>
+          </View>
+          <Text className="mt-2 text-xs leading-5" style={{ color: colors.muted }}>
+            Add ANDROID_GOOGLE_MAPS_API_KEY to the native build environment to enable Google Maps tiles. The story list remains available below.
+          </Text>
+        </View>
+      )}
+
+      {selectedStory ? (
+        <Pressable
+          onPress={() => router.push("/story/" + encodeURIComponent(selectedStory._id))}
+          className="mb-4 flex-row items-center rounded-2xl border p-3"
+          style={{ borderColor: colors.crimson, backgroundColor: colors.wine }}
+        >
+          {selectedStory.mediaUrl ? <Image source={{ uri: selectedStory.mediaUrl }} className="h-12 w-12 rounded-xl" /> : null}
+          <View className="ml-3 flex-1">
+            <Text className="text-xs font-bold" style={{ color: colors.rose }}>
+              {selectedStory.userId?.fullname || selectedStory.userId?.username || "Story"}
+            </Text>
+            <Text className="mt-1 text-xs" numberOfLines={1} style={{ color: "#FFFFFF" }}>
+              {selectedStory.caption || "Open this story"}
+            </Text>
+          </View>
+          <MaterialCommunityIcons name="arrow-up-right" size={19} color={colors.rose} />
+        </Pressable>
+      ) : null}
+
+      <View className="mb-3 flex-row items-center justify-between">
+        <Text className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.muted }}>Recent moments</Text>
+        <Text className="text-xs" style={{ color: colors.muted }}>{stories.length} stories</Text>
+      </View>
+    </View>
+  );
 
   return (
     <Screen scroll={false}>
@@ -177,6 +303,7 @@ export default function StoryGlobeScreen() {
         <FlatList
           data={stories}
           keyExtractor={item => item._id}
+          ListHeaderComponent={mapHeader}
           renderItem={({ item }) => <StoryCard story={item} />}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(tab, true)} tintColor={colors.rose} />}
           onEndReached={() => {
