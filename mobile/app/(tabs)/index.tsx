@@ -253,6 +253,15 @@ export default function FeedScreen() {
             <MaterialCommunityIcons name="refresh" size={21} color={colors.rose} />
           </Pressable>
           <Pressable
+            onPress={() => router.push("/notifications")}
+            accessibilityRole="button"
+            accessibilityLabel="Open notifications"
+            className="mr-2 h-11 w-11 items-center justify-center rounded-full border"
+            style={{ borderColor: colors.line, backgroundColor: colors.panel }}
+          >
+            <MaterialCommunityIcons name="bell-outline" size={20} color={colors.rose} />
+          </Pressable>
+          <Pressable
             onPress={() => router.push("/feed-controls")}
             accessibilityRole="button"
             accessibilityLabel="Open feed controls"
