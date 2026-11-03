@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - mobile/ios-android-conversion
+      - mobile/social-graph
     paths:
       - "mobile/**"
       - "src/app/api/mobile/**"
@@ -13,6 +14,22 @@ on:
       - "src/app/api/feed-preferences/**"
       - "src/app/api/user/me/**"
       - "src/app/api/media/upload/**"
+      - "src/app/api/support/**"
+      - "src/app/api/support-suggestions/**"
+      - "src/app/api/check-request/**"
+      - "src/app/api/users/**"
+      - "src/app/api/search/users/**"
+      - "src/app/profile/route.js"
+      - "src/app/api/userPosts/**"
+      - "src/app/lib/socialStore.js"
+      - "src/app/api/support/**"
+      - "src/app/api/support-suggestions/**"
+      - "src/app/api/check-request/**"
+      - "src/app/api/users/**"
+      - "src/app/api/search/users/**"
+      - "src/app/profile/route.js"
+      - "src/app/api/userPosts/**"
+      - "src/app/lib/socialStore.js"
   pull_request:
     branches:
       - main
