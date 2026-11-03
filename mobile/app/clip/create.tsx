@@ -204,7 +204,6 @@ export default function CreateClipScreen() {
     }finally{setBusy(false);}
   }
 
-  const filter=FILTERS.find(item=>item.id===selected?.filter)||FILTERS[0];
   const visibleText=textLayers.filter(layer=>playhead>=layer.start&&playhead<=layer.end);
 
   return <Screen>
