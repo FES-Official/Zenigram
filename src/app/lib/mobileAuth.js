@@ -17,6 +17,55 @@ function nowSeconds() {
   return Math.floor(Date.now() / 1000);
 }
 
+/**
+ * Distributed fixed-window login limiter. Raw IP addresses and identifiers
+ * are never stored: the DynamoDB partition keys contain keyed digests only.
+ */
+export async function consumeMobileLoginRateLimit(request, identifier) {
+  const now = nowSeconds();
+  const windowSeconds = 15 * 60;
+  const windowId = Math.floor(now / windowSeconds);
+  const retryAfter = Math.max(1, (windowId + 1) * windowSeconds - now);
+  const forwarded = String(request?.headers?.get("x-forwarded-for") || "")
+    .split(",")[0]
+    .trim();
+  const ip = String(request?.headers?.get("x-real-ip") || forwarded || "unknown").slice(0, 100);
+  const digest = value =>
+    createHmac("sha256", signingSecret()).update(value, "utf8").digest("hex");
+  const ipHash = digest(ip);
+  const identityHash = digest(ip + "\\u0000" + String(identifier || "").toLowerCase());
+  const expiry = (windowId + 1) * windowSeconds;
+  const update = (key, limit) => ({
+    Update: {
+      TableName: tableName(),
+      Key: key,
+      UpdateExpression: "SET attempts = if_not_exists(attempts, :zero) + :one, expiresAt = :expires",
+      ConditionExpression: "attribute_not_exists(attempts) OR attempts < :limit",
+      ExpressionAttributeValues: {
+        ":zero": 0,
+        ":one": 1,
+        ":expires": expiry,
+        ":limit": limit,
+      },
+    },
+  });
+
+  try {
+    await database().send(new TransactWriteCommand({
+      TransactItems: [
+        update({ PK: "MOBILERATE#IP#" + ipHash + "#" + windowId, SK: "LOGIN" }, 40),
+        update({ PK: "MOBILERATE#IDENTITY#" + identityHash + "#" + windowId, SK: "LOGIN" }, 8),
+      ],
+    }));
+    return { allowed: true, retryAfter };
+  } catch (error) {
+    if (error?.name === "TransactionCanceledException" || error?.name === "ConditionalCheckFailedException") {
+      return { allowed: false, retryAfter };
+    }
+    throw error;
+  }
+}
+
 function database() {
   return getDynamoDocumentClient();
 }
