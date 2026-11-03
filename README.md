@@ -1,4 +1,4 @@
-# Zenigram App
+# Zenigram
 
 Zenigram is a Next.js social app with credentials/Google auth, posts, comments,
 likes, profile privacy, messaging, story creation, and the Stories Globe.
