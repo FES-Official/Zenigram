@@ -115,6 +115,8 @@ function makeSessionItem({ sessionId, familyId, userId, refreshHash, now, family
 }
 
 export async function createMobileSession(userId, deviceName) {
+  // Fail before writing a DynamoDB session when the server key is missing.
+  signingSecret();
   const now = nowSeconds();
   const sessionId = randomBytes(16).toString("hex");
   const familyId = sessionId;
