@@ -14,6 +14,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { api, getApiErrorMessage } from "@/lib/api";
 import { colors } from "@/theme/colors";
+import { StoryStrip } from "@/components/StoryStrip";
 
 type FeedMode = "balanced" | "circle" | "latest" | "interests" | "discover";
 type FeedPreferences = { mode?: FeedMode };
@@ -297,6 +298,8 @@ export default function FeedScreen() {
           })}
         </ScrollView>
       </View>
+
+      <StoryStrip />
 
       <View className="mb-5">
         <View className="mb-2 flex-row items-center justify-between">
