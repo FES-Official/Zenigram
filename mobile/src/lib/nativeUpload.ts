@@ -9,6 +9,11 @@ export type UploadedImage = {
   type: "image";
 };
 
+export type UploadedVideo = {
+  key: string;
+  type: "video";
+};
+
 function inferContentType(fileName: string): string {
   const extension = fileName.split(".").pop()?.toLowerCase();
   switch (extension) {
@@ -111,4 +116,59 @@ export async function deleteUploadedMedia(keys: string[]): Promise<void> {
   const uniqueKeys = [...new Set(keys)].filter(Boolean).slice(0, 10);
   if (!uniqueKeys.length) return;
   await api.post("/api/media/upload", { action: "delete", keys: uniqueKeys });
+}
+
+
+export async function uploadPickedVideo(
+  asset: ImagePicker.ImagePickerAsset,
+  onProgress?: (percent: number) => void,
+): Promise<UploadedVideo> {
+  if (asset.type !== "video") {
+    throw new Error("Choose a video to create a clip.");
+  }
+
+  // The current native single-PUT path deliberately caps the file size to
+  // avoid reading very large videos into one in-memory Blob on mobile.
+  const maxBytes = 200 * 1024 * 1024;
+  if (asset.fileSize && asset.fileSize > maxBytes) {
+    throw new Error("Videos must be 200 MB or smaller in this version.");
+  }
+
+  const fileName = safeFileName(asset.fileName || "zenigram-" + Date.now() + ".mp4");
+  const contentType = String(asset.mimeType || "video/mp4").toLowerCase();
+  if (!new Set(["video/mp4", "video/quicktime", "video/webm"]).has(contentType)) {
+    throw new Error("Use an MP4, MOV, or WebM video.");
+  }
+
+  const localResponse = await fetch(asset.uri);
+  if (!localResponse.ok) {
+    throw new Error("Zenigram could not read the selected video from this device.");
+  }
+  const blob = await localResponse.blob();
+  if (!blob.size || blob.size > maxBytes) {
+    throw new Error("Videos must be larger than 0 bytes and 200 MB or smaller.");
+  }
+
+  const { data: created } = await api.post<{
+    key: string;
+    uploadUrl: string;
+  }>("/api/media/upload", {
+    action: "create",
+    fileName,
+    contentType,
+    size: blob.size,
+  });
+
+  if (!created?.key || !created?.uploadUrl) {
+    throw new Error("The media service did not return an upload URL.");
+  }
+
+  try {
+    await putBlob(created.uploadUrl, blob, contentType, onProgress);
+    onProgress?.(100);
+    return { key: created.key, type: "video" };
+  } catch (error) {
+    await deleteUploadedMedia([created.key]).catch(() => {});
+    throw error;
+  }
 }
