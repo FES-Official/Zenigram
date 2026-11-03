@@ -13,8 +13,13 @@ The visual system follows Zenigram's dark-first black-cherry / burgundy / crimso
 - Native sign-in calls the new mobile credential endpoint.
 - Separate mobile access/refresh sessions are issued by Next.js and persisted with Expo SecureStore.
 - The mobile client automatically rotates an expiring/expired access session after a 401 and retries the original request once.
-- Home loads the existing ranked feed; Feed Control Center changes the same saved preferences used by the web app.
-- Profile loads the existing account/progression data and includes sign-out.
+- Home loads the existing ranked feed, stories tray, post interactions and Feed Control Center.
+- Native post creation supports multiple photos, captions, topics, audience selection and private S3 uploads.
+- Stories include image creation with explicit location permission, viewer/engagement, comments and Stories Globe discovery.
+- Clips include native vertical playback, engagement, comments and a native video upload flow with resumable multipart S3 transfers.
+- Messaging includes a native inbox and text conversation screen; REST refresh is available while persistent Socket.IO is pending.
+- Profile includes account/progression, profile picture editing, bio/website and hidden-account settings.
+- Notifications can be viewed and marked read in the native client.
 - The web app remains in place and its browser NextAuth session is kept separate.
 
 See CONVERSION_STATUS.md for the live completion list and API_CONTRACT.md for server environment and security requirements.
@@ -31,7 +36,7 @@ See CONVERSION_STATUS.md for the live completion list and API_CONTRACT.md for se
 
 ## Backend compatibility findings
 
-The web APIs originally used getServerSession(authOptions) and browser cookies. A shared server request-auth helper now supports a separate native bearer token on the explicitly converted endpoints: posts/feed, feed preferences, current user profile and media upload instructions.
+The web APIs originally used getServerSession(authOptions) and browser cookies. A shared server request-auth helper now supports a separate native bearer token on the explicitly converted endpoints, including posts/feed, feed preferences, current user profile/profile updates, media upload, stories, clips, conversations/messages and notifications.
 
 Other route families still need to be audited and converted explicitly. Do not globally bypass cookie/CSRF protections. See API_CONTRACT.md.
 
@@ -39,12 +44,12 @@ Other route families still need to be audited and converted explicitly. Do not g
 
 - [ ] Credentials and Google/Apple sign-in, sign-up, email/phone verification, logout, session restore
 - [x] Home feed and five feed modes; source weights, topic weights, topic mute/unmute
-- [ ] Posts, multi-image layouts, topics, audience controls, likes, comments, shares, saves
-- [ ] Stories, story editor, location tagging, story viewer, story events, Stories Globe
-- [ ] Clips, native video playback, clip creation/editor, timeline/text overlays, upload progress
-- [ ] Messaging, groups, drawing messages, reactions, edits/deletes, real-time updates and polling fallback
-- [ ] Profiles, followers/following, privacy, blocking/unblocking, hidden accounts and Z+ security
-- [ ] Notifications, search, saved collections, missions/supporter milestones, professional dashboard
+- [ ] Posts: native photo creation, likes, comments/replies and saves are connected; shares, editing/deletion, richer layouts and full audience parity remain.
+- [ ] Stories: image composer, explicit location tagging, viewer/engagement, comments and Stories Globe are connected; full story editor parity, video stories and story event parity remain.
+- [ ] Clips: native playback, likes/views/saves/interest feedback, comments and resumable video publishing are connected; multi-asset timeline, trimming, filters and text overlays remain.
+- [ ] Messaging: native inbox and text chat/read receipts are connected; groups, drawing/media messages, reactions, edits/deletes and persistent real-time updates remain.
+- [ ] Profiles: profile view, picture/bio/website editing and hidden-account toggle are connected; followers/following, full privacy, blocking/unblocking and Z+ security remain.
+- [ ] Notifications list/read state is connected; search, saved collections, missions/supporter milestones and professional dashboard remain.
 - [ ] Reports, account controls, legal/privacy screens and accessibility
 
 ## Local development
