@@ -2,7 +2,7 @@
 
 ## Current implementation state
 
-The first native authentication slice is implemented on the mobile/ios-android-conversion branch:
+The first native authentication slice is implemented on the mobile/social-graph branch:
 
 | Endpoint | Status | Purpose |
 | --- | --- | --- |
@@ -12,7 +12,7 @@ The first native authentication slice is implemented on the mobile/ios-android-c
 | GET /api/mobile/auth/session | Implemented | Return the active account linked to a valid access token |
 | POST /api/mobile/auth/logout-all | Pending | Revoke every device session for an account |
 
-The native client stores access/refresh tokens through Expo SecureStore and refreshes after an API 401. The Home feed, Feed Control Center, profile read, and sign-out are connected to the existing backend. Other feature API families still need bearer-auth integration and device testing.
+The native client stores access/refresh tokens through Expo SecureStore and refreshes after an API 401. The Home feed, Feed Control Center, profile reads, creator discovery and core social-graph actions are connected to the existing backend. Converted routes continue to accept web NextAuth sessions as well as mobile bearer tokens.
 
 ## Authentication architecture
 
@@ -48,25 +48,27 @@ In mobile/.env, set EXPO_PUBLIC_API_URL to the HTTPS origin of the deployed Next
 
 The shared bearer-auth helper is connected to these existing route families:
 
-- /api/posts — feed retrieval and post creation
+- /api/posts and /api/post — feed retrieval, post creation and post interactions
 - /api/feed-preferences — read, write and feedback actions
-- /api/user/me — current profile/progression read
+- /api/user/me and /api/userPosts — current profile/progression and visible profile posts
+- /api/profile and /api/profile-update — public profile reads and profile edits
+- /api/search/users and /api/support-suggestions — creator search and ranked suggestions
+- /api/support, /api/support/cancel, /api/support/respond and /api/check-request — support, hidden-account requests and request decisions
+- /api/users/block, /api/users/blocked and /api/users/unblock-request — block, unblock, blocked-account list and unblock-request workflows
 - /api/media/upload — signed S3 and multipart upload instruction requests
+- /api/clips, /api/stories, /api/story-globe, /api/story-upload — native story and clip APIs
+- /api/conversations and /api/messages — native inbox and messaging APIs
+- /api/notifications — notification list and read state
 
-The following route families have not yet been audited and wired for mobile bearer authentication:
+The following route families still need route-by-route mobile authorization audit and device testing:
 
 | Feature | Existing route family |
 | --- | --- |
-| Clips | /api/clips |
-| Stories / globe | /api/stories, /api/story-globe, /api/story-upload |
-| Messaging | /api/conversations, /api/messages |
-| Profiles / social graph | /api/profile, /api/profile-update, /api/user, /api/users |
-| Search / notifications | /api/search, /api/notifications |
 | Saved content | /api/saved-collections and saved-content routes |
-| Safety / privacy | /api/content-audience, /api/reports, account and block/privacy routes |
-| Missions / progression | /api/missions, /api/badges, /api/support, /api/trails |
+| Safety / privacy | /api/content-audience, /api/reports, remaining account/privacy routes |
+| Missions / progression | /api/missions, /api/badges, /api/support, /api/trails (beyond social support actions) |
 
-For each route, record methods, request/response schema, pagination, authorization, idempotency, rate limits and error format before writing its mobile service.
+For each remaining route, record methods, request/response schema, pagination, authorization, idempotency, rate limits and error format before writing its mobile service.
 
 ## Media upload requirements
 
