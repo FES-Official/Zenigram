@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { getUserByIdentifier, getUserById, updateUser } from "@/app/lib/socialStore";
-import { createMobileSession } from "@/app/lib/mobileAuth";
+import { consumeMobileLoginRateLimit, createMobileSession } from "@/app/lib/mobileAuth";
 import { normalizeString } from "@/app/lib/api";
 
 export const runtime = "nodejs";
@@ -24,6 +24,14 @@ export async function POST(request) {
     const password = typeof body?.password === "string" ? body.password : "";
     if (!identifier || identifier.length > 254 || !password || password.length > 1024) {
       return error("Enter your username/email and password.", 400);
+    }
+
+    const rateLimit = await consumeMobileLoginRateLimit(request, identifier);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { success: false, message: "Too many sign-in attempts. Try again after the limit resets." },
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfter) } },
+      );
     }
 
     const user = await getUserByIdentifier(identifier);
