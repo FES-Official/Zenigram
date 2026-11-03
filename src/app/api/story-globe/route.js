@@ -1,15 +1,17 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
 import { listStoryGlobe } from "@/app/lib/storyGlobeStore";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 
 export async function GET(req) {
   try {
-    const session = await getServerSession(authOptions);
+    const viewerId = await getAuthenticatedUserId(req);
+    if (req.headers.get("authorization") && !viewerId) {
+      return Response.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
     const url = new URL(req.url);
     const tab = url.searchParams.get("tab") || "all";
     const limit = Number(url.searchParams.get("limit") || 80);
     const cursor = url.searchParams.get("cursor") || "";
-    const result = await listStoryGlobe(session?.user?.id || "", tab, limit, cursor);
+    const result = await listStoryGlobe(viewerId || "", tab, limit, cursor);
     return Response.json({ success: true, ...result });
   } catch (error) {
     console.error("Story globe feed error:", error);
