@@ -74,10 +74,6 @@ export default function CreateClipScreen() {
           setError("This clip is longer than 2 minutes. Video trimming is part of the next editor pass.");
           return;
         }
-        if (chosen.fileSize && chosen.fileSize > 200 * 1024 * 1024) {
-          setError("This version supports video files up to 200 MB.");
-          return;
-        }
         setAsset(chosen);
       }
     } catch (caught) {
@@ -159,7 +155,7 @@ export default function CreateClipScreen() {
         >
           <MaterialCommunityIcons name="video-plus-outline" size={48} color={colors.rose} />
           <Text className="mt-4 text-lg font-bold" style={{ color: colors.text }}>Choose a video</Text>
-          <Text className="mt-2 text-center text-xs leading-5" style={{ color: colors.muted }}>Select an MP4, MOV or WebM video up to 2 minutes and 200 MB.</Text>
+          <Text className="mt-2 text-center text-xs leading-5" style={{ color: colors.muted }}>Select an MP4, MOV or WebM video up to 2 minutes. Large files use resumable multipart upload.</Text>
         </Pressable>
       )}
 
@@ -231,7 +227,7 @@ export default function CreateClipScreen() {
         <Text className="ml-2 text-base font-bold" style={{ color: colors.background }}>{busy ? "Publishing..." : "Publish clip"}</Text>
       </Pressable>
       <Text className="mb-6 text-xs leading-5" style={{ color: colors.muted }}>
-        This first native clip publisher uploads one video asset. Trimming, multi-asset timelines, filters and animated text layers are still on the migration roadmap.
+        This native publisher uploads one video asset with resumable multipart transfer for large files. Trimming, multi-asset timelines, filters and animated text layers are still on the migration roadmap.
       </Text>
     </Screen>
   );
