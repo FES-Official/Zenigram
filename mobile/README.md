@@ -8,6 +8,17 @@ Build Zenigram as a polished, independent native social application—not a WebV
 
 The visual system follows Zenigram's dark-first black-cherry / burgundy / crimson identity, with accessible contrast and platform-appropriate safe areas, keyboard behavior, and navigation.
 
+## Current implementation slice
+
+- Native sign-in calls the new mobile credential endpoint.
+- Separate mobile access/refresh sessions are issued by Next.js and persisted with Expo SecureStore.
+- The mobile client automatically rotates an expiring/expired access session after a 401 and retries the original request once.
+- Home loads the existing ranked feed; Feed Control Center changes the same saved preferences used by the web app.
+- Profile loads the existing account/progression data and includes sign-out.
+- The web app remains in place and its browser NextAuth session is kept separate.
+
+See CONVERSION_STATUS.md for the live completion list and API_CONTRACT.md for server environment and security requirements.
+
 ## Non-negotiable migration rules
 
 - Preserve the existing web app; do not replace or move its Next.js routes.
@@ -18,25 +29,16 @@ The visual system follows Zenigram's dark-first black-cherry / burgundy / crimso
 - Do not expose the existing NextAuth JWT or its signing secret to the mobile client.
 - Treat feature placeholders as unfinished work; never claim a feature is integrated until its API contract, error states, and device tests are complete.
 
-## Current backend compatibility findings
+## Backend compatibility findings
 
-The current Next.js APIs authenticate with getServerSession(authOptions), which relies on NextAuth browser cookies. A native app cannot safely depend on browser cookie behavior. Before mobile sign-in can be production-ready, add a mobile authentication contract (short-lived access token + rotating refresh token, revocation, expiry, device/session management, and rate limiting) and a server-side request authenticator used by mobile API requests.
+The web APIs originally used getServerSession(authOptions) and browser cookies. A shared server request-auth helper now supports a separate native bearer token on the explicitly converted endpoints: posts/feed, feed preferences, current user profile and media upload instructions.
 
-Existing endpoints worth reusing after that authentication layer is added:
-
-- GET/POST /api/posts — feed retrieval and post creation
-- GET/POST /api/clips — clips feed and publishing
-- GET/PUT/PATCH /api/feed-preferences — user-controlled feed
-- POST /api/media/upload — signed S3 uploads and multipart video uploads
-- GET/POST /api/conversations and message routes — messaging
-- Stories, notifications, profile, search, saved content, audience/privacy and story-globe API routes
-
-Every endpoint must be audited for cookie-only assumptions, browser APIs, CSRF behavior, pagination, response consistency, authorization, and mobile-safe rate limits before mobile calls it. See API_CONTRACT.md.
+Other route families still need to be audited and converted explicitly. Do not globally bypass cookie/CSRF protections. See API_CONTRACT.md.
 
 ## Feature parity checklist
 
 - [ ] Credentials and Google/Apple sign-in, sign-up, email/phone verification, logout, session restore
-- [ ] Home feed, five feed modes, topic/source weights, mute creator/topic, "why am I seeing this?"
+- [x] Home feed and five feed modes; source weights, topic weights, topic mute/unmute
 - [ ] Posts, multi-image layouts, topics, audience controls, likes, comments, shares, saves
 - [ ] Stories, story editor, location tagging, story viewer, story events, Stories Globe
 - [ ] Clips, native video playback, clip creation/editor, timeline/text overlays, upload progress
@@ -45,22 +47,21 @@ Every endpoint must be audited for cookie-only assumptions, browser APIs, CSRF b
 - [ ] Notifications, search, saved collections, missions/supporter milestones, professional dashboard
 - [ ] Reports, account controls, legal/privacy screens and accessibility
 
-## Delivery sequence
-
-1. Audit route contracts and feature inventory against the current main branch.
-2. Stabilize the Expo + TypeScript + NativeWind foundation and shared design system.
-3. Implement mobile auth/session APIs and native authentication screens.
-4. Implement feed, profiles, posts, stories and clips in vertical slices.
-5. Implement messaging, notifications, privacy/security and remaining features.
-6. Add automated tests, iOS Simulator and Android device QA, accessibility/performance checks.
-7. Configure EAS production builds, Android App Bundle signing, iOS signing/TestFlight, store listings and staged releases.
-
 ## Local development
 
-From the mobile directory, install dependencies, copy .env.example to .env, then run npx expo start.
+From this directory:
 
-Set EXPO_PUBLIC_API_URL to the HTTPS base URL of the Next.js API. Only public API base URLs and public OAuth client identifiers belong in the mobile app. Server secrets remain in Vercel/server environment variables.
+    npm ci
+    cp .env.example .env
+    npx expo start
 
-Before native builds, run npx expo-doctor and npx tsc --noEmit.
+Set EXPO_PUBLIC_API_URL in mobile/.env to the HTTPS origin of the Next.js API. Only public API base URLs and public OAuth client identifiers belong in the mobile app. ZENIGRAM_MOBILE_AUTH_SECRET and all other server secrets stay in Vercel/server environment variables.
+
+For a physical phone against a local dev server, use the development computer's LAN IP and port; the phone's localhost is the phone itself.
+
+Before native builds, run:
+
+    npx expo-doctor
+    npx tsc --noEmit
 
 Do not submit to either store until the security gates and feature parity checklist are satisfied.
