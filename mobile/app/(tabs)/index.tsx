@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { api, getApiErrorMessage } from "@/lib/api";
@@ -167,7 +167,12 @@ export default function FeedScreen() {
     }
   }, []);
 
-  useEffect(() => { void loadFeed(); }, [loadFeed]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadFeed(true);
+      return undefined;
+    }, [loadFeed]),
+  );
 
   const updatePost = useCallback((postId: string, patch: Partial<FeedPost>) => {
     setPosts(current => current.map(post => post._id === postId ? { ...post, ...patch } : post));
