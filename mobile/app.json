@@ -27,6 +27,12 @@
           "cameraPermission": "Zenigram uses your camera to create posts, stories, and clips.",
           "microphonePermission": "Zenigram uses your microphone when you record videos."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Zenigram uses your location only when you choose to add a place to a story."
+        }
       ]
     ],
     "experiments": {
