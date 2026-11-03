@@ -92,14 +92,14 @@ export default function StoryGlobeScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
 
-  const load = useCallback(async (nextTab: GlobeTab, refresh = false, append = false) => {
+  const load = useCallback(async (nextTab: GlobeTab, refresh = false, append = false, pageCursor: string | null = null) => {
     if (append) setLoadingMore(true);
     else if (refresh) setRefreshing(true);
     else setLoading(true);
     setError("");
     try {
       const params: Record<string, string | number> = { tab: nextTab, limit: 40 };
-      if (append && cursor) params.cursor = cursor;
+      if (append && pageCursor) params.cursor = pageCursor;
       const { data } = await api.get<GlobeResponse>("/api/story-globe", { params });
       const incoming = Array.isArray(data.stories) ? data.stories : [];
       setStories(current => append ? [...current, ...incoming] : incoming);
@@ -112,7 +112,7 @@ export default function StoryGlobeScreen() {
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, [cursor]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -180,7 +180,7 @@ export default function StoryGlobeScreen() {
           renderItem={({ item }) => <StoryCard story={item} />}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(tab, true)} tintColor={colors.rose} />}
           onEndReached={() => {
-            if (hasMore && cursor && !loadingMore) void load(tab, false, true);
+            if (hasMore && cursor && !loadingMore) void load(tab, false, true, cursor);
           }}
           onEndReachedThreshold={0.4}
           ListEmptyComponent={
