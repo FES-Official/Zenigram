@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
+import { getUserById } from "@/app/lib/socialStore";
 import { getBearerMobileUserId } from "@/app/lib/mobileAuth";
 
 /**
@@ -12,7 +13,13 @@ import { getBearerMobileUserId } from "@/app/lib/mobileAuth";
 export async function getAuthenticatedUserId(request) {
   const authorization = request?.headers?.get("authorization");
   if (authorization) {
-    return getBearerMobileUserId(request);
+    const userId = await getBearerMobileUserId(request);
+    if (!userId) return null;
+
+    // Re-check account status so a disabled/deleted account cannot keep using
+    // an access token issued before the account state changed.
+    const user = await getUserById(userId);
+    return user?.accountStatus === "active" ? userId : null;
   }
 
   const session = await getServerSession(authOptions);
