@@ -3,6 +3,7 @@ import axios, {
   AxiosHeaders,
   type InternalAxiosRequestConfig,
 } from "axios";
+import { router } from "expo-router";
 import {
   clearSession,
   getAccessToken,
@@ -35,15 +36,15 @@ api.interceptors.request.use(async config => {
 });
 
 async function refreshSession(): Promise<boolean> {
-  if (!baseURL) return false;
-
-  const refreshToken = await getRefreshToken();
-  if (!refreshToken) {
-    await clearSession();
-    return false;
-  }
-
   try {
+    if (!baseURL) return false;
+
+    const refreshToken = await getRefreshToken();
+    if (!refreshToken) {
+      await clearSession();
+      return false;
+    }
+
     const response = await axios.post<MobileSession>(
       baseURL + "/api/mobile/auth/refresh",
       { refreshToken },
@@ -65,7 +66,11 @@ async function refreshSession(): Promise<boolean> {
     await saveSession(nextSession);
     return true;
   } catch {
-    await clearSession();
+    try {
+      await clearSession();
+    } catch {
+      // Keep the failed refresh result deterministic even if secure storage fails.
+    }
     return false;
   }
 }
@@ -98,10 +103,16 @@ api.interceptors.response.use(
     const refreshed = await pending;
     if (refreshPromise === pending) refreshPromise = null;
 
-    if (!refreshed) throw caught;
+    if (!refreshed) {
+      router.replace("/(auth)/sign-in");
+      throw caught;
+    }
 
     const token = await getAccessToken();
-    if (!token) throw caught;
+    if (!token) {
+      router.replace("/(auth)/sign-in");
+      throw caught;
+    }
 
     original.headers = AxiosHeaders.from(original.headers);
     original.headers.set("Authorization", "Bearer " + token);
