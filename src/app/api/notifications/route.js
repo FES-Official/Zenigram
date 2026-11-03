@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
+import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
 import { jsonError } from "@/app/lib/api";
 import { NextResponse } from "next/server";
 import {
@@ -7,12 +6,12 @@ import {
   markNotificationsRead,
 } from "@/app/lib/socialStore";
 
-export async function GET() {
+export async function GET(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
 
-    const notifications = await listNotifications(session.user.id, 100);
+    const notifications = await listNotifications(userId, 100);
 
     return NextResponse.json(
       notifications.map((notification) => ({
@@ -32,12 +31,12 @@ export async function GET() {
   }
 }
 
-export async function PATCH() {
+export async function PATCH(req) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return jsonError("Unauthorized", 401);
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return jsonError("Unauthorized", 401);
 
-    await markNotificationsRead(session.user.id);
+    await markNotificationsRead(userId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
