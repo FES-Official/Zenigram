@@ -70,16 +70,18 @@ function ClipCard({
   });
 
   useEffect(() => {
-    if (!videoUrl) return;
     if (active) {
-      player.muted = muted;
-      player.play();
-      setPlaying(true);
       onViewed();
-    } else {
-      player.pause();
-      setPlaying(false);
+      if (videoUrl) {
+        player.muted = muted;
+        player.play();
+        setPlaying(true);
+      }
+      return;
     }
+
+    if (videoUrl) player.pause();
+    setPlaying(false);
   }, [active, muted, onViewed, player, videoUrl]);
 
   function togglePlayback() {
