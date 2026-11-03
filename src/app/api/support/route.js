@@ -3,6 +3,8 @@ import { jsonError, jsonOk } from "@/app/lib/api";
 import {
   createNotification,
   getUserById,
+  getUserRelations,
+  hasPendingSupportRequest,
   toggleSupport,
   getBlockRelationship,
 } from "@/app/lib/socialStore";
@@ -27,7 +29,13 @@ export async function POST(req) {
     const blockRelationship = await getBlockRelationship(currentUser._id, targetUser._id);
     if (blockRelationship.blocked) return jsonError("This relationship is not available", 404);
 
-    if (targetUser.ishidden) {
+    const currentRelations = await getUserRelations(currentUser._id);
+    const alreadySupporting = (currentRelations.supporting || []).includes(String(targetUser._id));
+
+    if (targetUser.ishidden && !alreadySupporting) {
+      const alreadyRequested = await hasPendingSupportRequest(currentUser._id, targetUser._id);
+      if (alreadyRequested) return jsonOk({ requested: true, alreadyPending: true });
+
       await createNotification({
         sender: currentUser._id,
         recipient: targetUser._id,
