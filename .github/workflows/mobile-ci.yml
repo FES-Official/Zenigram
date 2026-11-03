@@ -44,6 +44,8 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: mobile/package-lock.json
+      - name: Regenerate dependency lock metadata
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Install mobile dependencies
         run: npm ci
       - name: TypeScript check
