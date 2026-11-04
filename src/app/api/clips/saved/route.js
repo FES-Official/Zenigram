@@ -33,11 +33,14 @@ async function batchGet(keys) {
 }
 
 async function hydrateClip(clip, viewerId, savedAt, viewerRelations) {
-  const mediaItems = await Promise.all(
-    (clip.mediaItems?.length
+  if (clip.renderStatus && clip.renderStatus !== "ready") return null;
+  const selectedMedia = clip.renderStatus === "ready" && clip.renderedMediaKey
+    ? [{ key: clip.renderedMediaKey, type: "video" }]
+    : (clip.mediaItems?.length
       ? clip.mediaItems
-      : [{ key: clip.mediaPublicId, url: clip.mediaUrl, type: clip.mediaType }]
-    ).map(async (media) => ({
+      : [{ key: clip.mediaPublicId, url: clip.mediaUrl, type: clip.mediaType }]);
+  const mediaItems = await Promise.all(
+    selectedMedia.map(async (media) => ({
       ...media,
       url: await getReadableMediaUrl(media.url, media.key || media.publicId),
     })),
