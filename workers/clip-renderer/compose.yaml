@@ -1,0 +1,30 @@
+services:
+  clip-renderer:
+    build:
+      context: ../..
+      dockerfile: workers/clip-renderer/Dockerfile
+    image: zenigram-clip-renderer:latest
+    container_name: zenigram-clip-renderer
+    restart: unless-stopped
+    init: true
+    network_mode: host
+    user: "1000:1000"
+    env_file:
+      - .env.worker
+    environment:
+      NODE_ENV: production
+    read_only: true
+    volumes:
+      - /var/lib/zenigram-clip-renderer/tmp:/tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 7g
+    cpus: 4.0
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
