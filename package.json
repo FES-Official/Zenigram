@@ -63,7 +63,8 @@
     "tailwind-merge": "^3.4.0",
     "three": "^0.182.0",
     "tus-js-client": "^4.3.0",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "@aws-sdk/client-sqs": "^3.1098.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
