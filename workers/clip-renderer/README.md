@@ -57,7 +57,7 @@ Use **Systems Manager Session Manager** to connect; the worker needs no inbound 
 
 ### 3. Build and start the worker
 
-On the EC2 instance, clone the merged `main` branch (or use the deployment script in this repository). Set these non-secret values from the CloudFormation outputs and the existing app configuration:
+On the EC2 instance, set these non-secret values from the CloudFormation outputs and the existing app configuration. After this PR is merged to `main`, the following downloads the bootstrap script directly, so you do not need to clone the repository first:
 
 ```bash
 export CLIP_RENDER_QUEUE_URL='https://sqs.<region>.amazonaws.com/<account>/zenigram-clip-render'
@@ -67,8 +67,9 @@ export AWS_DYNAMODB_REGION='<existing DynamoDB region>'
 export AWS_BUCKET_NAME='<existing bucket name>'
 export DYNAMODB_TABLE_NAME='<existing table name>'
 
+curl -fsSL https://raw.githubusercontent.com/FES-Official/Zenigram/main/workers/clip-renderer/deploy-existing-ec2.sh -o /tmp/deploy-zenigram-clip-renderer.sh
 sudo --preserve-env=CLIP_RENDER_QUEUE_URL,AWS_SQS_REGION,AWS_S3_REGION,AWS_DYNAMODB_REGION,AWS_BUCKET_NAME,DYNAMODB_TABLE_NAME \
-  bash workers/clip-renderer/deploy-existing-ec2.sh
+  bash /tmp/deploy-zenigram-clip-renderer.sh
 ```
 
 The script installs Docker if needed, builds the FFmpeg image, writes a root-only environment file with no AWS credentials, and starts the container with automatic restart. It uses the EC2 instance profile for AWS SDK authentication.
