@@ -30,12 +30,10 @@ AWS_S3_REGION=
 AWS_BUCKET_NAME=
 DYNAMODB_TABLE_NAME=linkex-app
 NEXT_PUBLIC_MAPBOX_TOKEN=
-RESEND_API_KEY=
-EMAIL_FROM=
+SES_FROM_EMAIL=
+AWS_SES_REGION=
+AWS_SNS_REGION=
 OTP_SECRET=
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_VERIFY_SERVICE_SID=
 # Set true only when running the custom Node server (server.js).
 NEXT_PUBLIC_REALTIME_ENABLED=false
 ```
@@ -47,14 +45,19 @@ DynamoDB because identically named tables can exist in multiple regions.
 
 ### Verification providers
 
-Password-based sign-up requires an email OTP delivered through Resend. Updating a
-phone number requires an SMS OTP delivered through Twilio Verify. Configure
-`RESEND_API_KEY` and a verified `EMAIL_FROM` sender, plus
-`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_VERIFY_SERVICE_SID`.
-Set a dedicated `OTP_SECRET`; `NEXTAUTH_SECRET` is only a fallback. Never commit
-these values. `npm run aws:setup` also enables DynamoDB TTL on the `ttl` field
-used by temporary verification and rate-limit records. Expiry is still checked
-in application code because DynamoDB TTL cleanup is asynchronous.
+Zenigram generates its own six-digit email and phone OTPs with Node.js
+`crypto`, stores only keyed hashes in DynamoDB, expires codes after 10 minutes,
+and enforces resend cooldowns and failed-attempt limits. AWS SES delivers email
+and AWS SNS delivers transactional SMS; SES/SNS do not generate or verify the
+codes. Configure a verified `SES_FROM_EMAIL` identity and set
+`AWS_SES_REGION` / `AWS_SNS_REGION` (or use `AWS_REGION`). The server's AWS
+IAM role or credentials need SES send-email and SNS publish permissions.
+Set a dedicated `OTP_SECRET`; `NEXTAUTH_SECRET` is only a fallback. Never
+commit credentials. SES sandbox accounts can only send to verified recipients,
+and SNS SMS delivery requires SMS spending limits/permissions and destination
+country support to be configured in AWS. `npm run aws:setup` enables DynamoDB
+TTL on the `ttl` field; application code checks expiry because TTL cleanup is
+asynchronous.
 
 ### Realtime behavior
 
