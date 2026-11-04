@@ -137,6 +137,7 @@ export function buildClipFilterGraph({
   const videoLabels = [];
   const sceneStarts = [];
   let timelineCursor = 0;
+  let originalTimelineCursor = 0;
 
   for (let index = 0; index < plan.timeline.length; index += 1) {
     const item = plan.timeline[index];
@@ -166,8 +167,8 @@ export function buildClipFilterGraph({
 
     for (let layerIndex = 0; layerIndex < plan.textLayers.length; layerIndex += 1) {
       const layer = plan.textLayers[layerIndex];
-      const layerStart = Math.max(0, layer.start - timelineCursor);
-      const layerEnd = Math.min(duration, layer.end - timelineCursor);
+      const layerStart = Math.max(0, layer.start - originalTimelineCursor);
+      const layerEnd = Math.min(duration, layer.end - originalTimelineCursor);
       if (layerEnd <= layerStart) continue;
       const textFile = textFilePaths[layerIndex];
       if (!textFile) continue;
@@ -209,6 +210,7 @@ export function buildClipFilterGraph({
       chains.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${seconds(duration)}[${audioLabel}]`);
     }
     audioLabels.push(audioLabel);
+    originalTimelineCursor += duration;
   }
 
   const overlapFor = (left, right) => Math.min(0.35, left / 3, right / 3);
