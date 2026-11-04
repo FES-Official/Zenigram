@@ -17,53 +17,81 @@ The worker is deliberately separate from the Next.js request lifecycle. Do not r
 
 Text overlay font rendering uses DejaVu Sans. Text position, size, foreground colour, italic/bold style and background are rendered. Rotation, underline/strike and arbitrary device fonts are not yet included in the FFmpeg export implementation.
 
-## AWS resources
+## AWS deployment
 
-Deploy `infra/clip-render-queue.yaml` to create a standard SQS queue and a dead-letter queue. Save the output `ClipRenderQueueUrl`.
+The repository includes a CloudFormation stack at `infra/clip-render-stack.yaml`. It creates:
 
-The Next.js server needs these server-side settings:
+- An encrypted standard SQS queue with 20-second long polling, a 20-minute visibility timeout and a dead-letter queue.
+- A worker managed policy restricted to SQS consumption, `s3:GetObject` / `PutObject` / `DeleteObject` on `media/*`, and DynamoDB `GetItem` / `UpdateItem` on the existing table.
+- An EC2 worker role/instance profile with the worker policy and `AmazonSSMManagedInstanceCore`.
+- A separate API publisher policy allowing only `sqs:SendMessage` to the render queue.
 
-- `CLIP_RENDERING_ENABLED=true`
-- `CLIP_RENDER_QUEUE_URL=<queue URL>`
-- `AWS_SQS_REGION=<queue region>` (or use the existing `AWS_REGION` / `AWS_DYNAMODB_REGION` setting)
-- Existing `AWS_BUCKET_NAME`, `AWS_S3_REGION`, `AWS_DYNAMODB_REGION`, `DYNAMODB_TABLE_NAME` and AWS credentials
+The stack does **not** create an EC2 instance or change existing access keys. This avoids starting a new recurring EC2 charge before checking whether an existing instance can host the worker.
 
-The API's AWS principal needs `sqs:SendMessage` on the clip-render queue. The renderer flag only activates the async path for requests carrying a valid mobile bearer token; it does not change the website's existing cookie-session publishing flow. Continue to keep AWS credentials server-side; never add them to `mobile/.env` or any `EXPO_PUBLIC_*` variable.
+### 1. Create the queue and IAM resources
 
-## Worker permissions
+In the AWS Console, open **CloudFormation → Create stack → With new resources (standard)** and upload `infra/clip-render-stack.yaml`.
 
-Prefer an EC2 instance profile / task role rather than long-lived credentials in the container. Grant only:
+Set:
+- **MediaBucketName**: the existing private Zenigram S3 bucket.
+- **DynamoDBTableName**: the existing Zenigram DynamoDB table.
+- **DynamoDBRegion**: the table's actual region; leave blank only when it matches the stack's region.
+- Keep the queue names at their defaults unless those names already exist.
 
-- SQS: `ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`, `GetQueueAttributes` on the render queue
-- S3: `GetObject`, `HeadObject`, `PutObject`, `DeleteObject` (orphan cleanup) on `arn:aws:s3:::YOUR_BUCKET/media/*`
-- DynamoDB: `GetItem`, `UpdateItem` on the existing `DYNAMODB_TABLE_NAME` table
+Deploy the stack in the AWS region you intend to use for SQS. Save the stack outputs:
+- `ClipRenderQueueUrl`
+- `QueueRegion`
+- `ClipRenderWorkerPolicyArn`
+- `ClipRenderApiPublisherPolicyArn`
+- `ClipRenderWorkerInstanceProfileName`
 
-If the bucket uses a customer-managed KMS key, add the minimum required KMS decrypt/encrypt permissions for that key.
+The Vercel API principal must be granted the publisher policy. Attach `ClipRenderApiPublisherPolicyArn` to the exact IAM user or role represented by the existing AWS credentials configured in Vercel. Do not replace or expose those keys. The instance needs the worker policy, not the API publisher policy.
 
-## Build and run on EC2
+### 2. Prepare the existing EC2 instance
 
-Build from the repository root:
+Prefer reusing an existing EC2 instance if it has enough CPU, memory and free EBS disk for FFmpeg. The worker can use the existing instance's IAM role: attach `ClipRenderWorkerPolicyArn` to that role and ensure it already has `AmazonSSMManagedInstanceCore`. This avoids replacing an instance profile that other applications may depend on.
+
+Alternatively, when the instance has no role attached, attach the stack's `ClipRenderWorkerInstanceProfileName`. Do not replace an existing production instance role without reviewing the permissions used by its other services.
+
+Use **Systems Manager Session Manager** to connect; the worker needs no inbound SSH port. The instance needs outbound HTTPS connectivity to AWS APIs, Docker Hub and GitHub. If it uses IMDSv2, keep it required; for containers that access instance-role credentials, AWS recommends a metadata response hop limit of 2. The provided deployment script uses Docker host networking for instance-profile credential access.
+
+### 3. Build and start the worker
+
+On the EC2 instance, clone the merged `main` branch (or use the deployment script in this repository). Set these non-secret values from the CloudFormation outputs and the existing app configuration:
 
 ```bash
-docker build -f workers/clip-renderer/Dockerfile -t zenigram-clip-renderer .
+export CLIP_RENDER_QUEUE_URL='https://sqs.<region>.amazonaws.com/<account>/zenigram-clip-render'
+export AWS_SQS_REGION='<CloudFormation QueueRegion>'
+export AWS_S3_REGION='<existing S3 region>'
+export AWS_DYNAMODB_REGION='<existing DynamoDB region>'
+export AWS_BUCKET_NAME='<existing bucket name>'
+export DYNAMODB_TABLE_NAME='<existing table name>'
+
+sudo --preserve-env=CLIP_RENDER_QUEUE_URL,AWS_SQS_REGION,AWS_S3_REGION,AWS_DYNAMODB_REGION,AWS_BUCKET_NAME,DYNAMODB_TABLE_NAME \
+  bash workers/clip-renderer/deploy-existing-ec2.sh
 ```
 
-Run it with an EC2 instance role attached:
+The script installs Docker if needed, builds the FFmpeg image, writes a root-only environment file with no AWS credentials, and starts the container with automatic restart. It uses the EC2 instance profile for AWS SDK authentication.
 
+Check the host with:
 ```bash
-docker run -d \
-  --name zenigram-clip-renderer \
-  --restart unless-stopped \
-  -e AWS_REGION=ap-south-1 \
-  -e AWS_BUCKET_NAME=YOUR_BUCKET \
-  -e DYNAMODB_TABLE_NAME=YOUR_DYNAMODB_TABLE \
-  -e CLIP_RENDER_QUEUE_URL=YOUR_QUEUE_URL \
-  zenigram-clip-renderer
+docker ps --filter name=zenigram-clip-renderer
+docker logs --tail 100 zenigram-clip-renderer
+df -h /
 ```
 
-Replace the example region, bucket, table and queue values with the values from your AWS account. Do not publish those values in source control if your bucket/table names are confidential.
+### 4. Configure Vercel, then enable gradually
 
-Scale by running multiple worker containers or EC2 instances against the same standard queue. The worker uses conditional DynamoDB claims, render versions and a visibility/lease heartbeat so duplicate SQS delivery does not normally start two renders for the same version.
+Add the following **server-side** project environment variables in Vercel for Preview first:
+- `CLIP_RENDER_QUEUE_URL`: the CloudFormation queue URL.
+- `AWS_SQS_REGION`: the CloudFormation `QueueRegion` output.
+- `CLIP_RENDERING_ENABLED`: keep this `false` until the worker is running and its IAM access has been verified.
+
+The existing Vercel AWS identity needs the API publisher policy for `sqs:SendMessage`. The worker's EC2 role uses a separate policy. Do not add AWS credentials to `mobile/.env`, any `EXPO_PUBLIC_*` variable, the Docker image, or the worker environment file.
+
+After the queue and worker are healthy, redeploy Preview and publish a test clip from the native app. Confirm the job is consumed, the worker writes a rendered MP4 to the private S3 bucket, and DynamoDB changes the clip to `ready`. Only then set `CLIP_RENDERING_ENABLED=true` for Preview. Test again. Enable Production only after Preview has completed an end-to-end render successfully. Set the same queue URL and `AWS_SQS_REGION` for the Production environment and redeploy it.
+
+Website cookie-session clip publishing remains on its legacy path; the asynchronous render flag applies only to authenticated native bearer-token requests.
 
 ## Limits and operations
 
