@@ -141,6 +141,14 @@ export function buildClipFilterGraph({
   for (let index = 0; index < plan.timeline.length; index += 1) {
     const item = plan.timeline[index];
     const media = plan.mediaItems[index];
+    if (index > 0) {
+      const previousDuration = plan.timeline[index - 1].duration;
+      const currentDuration = item.duration;
+      const overlap = plan.transition === "cut"
+        ? 0
+        : Math.min(0.35, previousDuration / 3, currentDuration / 3);
+      timelineCursor += previousDuration - overlap;
+    }
     sceneStarts.push(timelineCursor);
     const duration = item.duration;
 
@@ -201,7 +209,6 @@ export function buildClipFilterGraph({
       chains.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${seconds(duration)}[${audioLabel}]`);
     }
     audioLabels.push(audioLabel);
-    timelineCursor += duration;
   }
 
   const overlapFor = (left, right) => Math.min(0.35, left / 3, right / 3);
