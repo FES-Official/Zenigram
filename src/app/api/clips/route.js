@@ -69,7 +69,8 @@ export async function POST(req) {
     const userId = await getAuthenticatedUserId(req);
     if (!userId) return jsonError("Unauthorized", 401);
     const body = await req.json();
-    const renderEnabled = isClipRenderingEnabled();
+    // Keep existing website publishing unchanged; render jobs are opt-in for bearer-authenticated native clients.
+    const renderEnabled = Boolean(req.headers.get("authorization")) && isClipRenderingEnabled();
     if (renderEnabled && !process.env.CLIP_RENDER_QUEUE_URL?.trim()) {
       return jsonError("Clip rendering is enabled but its SQS queue is not configured", 503);
     }
