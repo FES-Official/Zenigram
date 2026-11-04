@@ -18,6 +18,13 @@ Create `.env.local` with:
 
 ```env
 NEXTAUTH_SECRET=
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+EMAIL_FROM=
+MSG91_AUTH_KEY=
+MSG91_OTP_TEMPLATE_ID=
 NEXTAUTH_URL=http://localhost:7860
 NEXTAUTH_URL_INTERNAL=http://localhost:7860
 GOOGLE_CLIENT_ID=
@@ -43,21 +50,22 @@ region). Set both service-specific values when S3 and DynamoDB are in
 different regions; the app deliberately does not reuse the S3 region for
 DynamoDB because identically named tables can exist in multiple regions.
 
-### Verification providers
+### Verification delivery and OTP security
 
-Zenigram generates its own six-digit email and phone OTPs with Node.js
-`crypto`, stores only keyed hashes in DynamoDB, expires codes after 10 minutes,
-and enforces resend cooldowns and failed-attempt limits. AWS SES delivers email
-and AWS SNS delivers transactional SMS; SES/SNS do not generate or verify the
-codes. Configure a verified `SES_FROM_EMAIL` identity and set
-`AWS_SES_REGION` / `AWS_SNS_REGION` (or use `AWS_REGION`). The server's AWS
-IAM role or credentials need SES send-email and SNS publish permissions.
-Set a dedicated `OTP_SECRET`; `NEXTAUTH_SECRET` is only a fallback. Never
-commit credentials. SES sandbox accounts can only send to verified recipients,
-and SNS SMS delivery requires SMS spending limits/permissions and destination
-country support to be configured in AWS. `npm run aws:setup` enables DynamoDB
-TTL on the `ttl` field; application code checks expiry because TTL cleanup is
-asynchronous.
+Zenigram generates six-digit email and phone OTPs with Node.js `crypto`,
+stores only keyed hashes in DynamoDB, and verifies codes inside the app.
+Codes expire after 10 minutes, requests have a 60-second resend cooldown,
+and failed attempts are limited. Email is delivered over standard SMTP using
+Nodemailer as the SMTP protocol client (not Resend). SMS is delivered through
+the MSG91 SMS OTP endpoint using the app-generated code; Zenigram performs
+the code verification itself rather than using MSG91's verification service.
+
+Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and
+`EMAIL_FROM` for email. Configure `MSG91_AUTH_KEY` and
+`MSG91_OTP_TEMPLATE_ID` for SMS. The MSG91 OTP template must be approved
+and mapped to the applicable Indian DLT template and sender details. Set a
+dedicated `OTP_SECRET`; `NEXTAUTH_SECRET` is only a fallback. Never commit
+secrets. DynamoDB TTL cleanup is asynchronous; application code checks expiry.
 
 ### Realtime behavior
 
