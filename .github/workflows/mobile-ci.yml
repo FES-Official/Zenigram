@@ -5,6 +5,7 @@ on:
     branches:
       - mobile/ios-android-conversion
       - mobile/social-graph
+      - mobile/clips-story-editor
     paths:
       - "mobile/**"
       - "src/app/api/mobile/**"

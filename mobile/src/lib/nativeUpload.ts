@@ -76,6 +76,45 @@ export async function deleteUploadedMedia(keys: string[]): Promise<void> {
   await api.post("/api/media/upload", { action: "delete", keys: uniqueKeys });
 }
 
+export async function uploadLocalImage(
+  uri: string,
+  fileName: string,
+  contentType = "image/png",
+  onProgress?: (percent: number) => void,
+): Promise<UploadedImage> {
+  const normalizedName = safeFileName(fileName || "zenigram-image.png");
+  const normalizedType = contentType.toLowerCase();
+  if (!ALLOWED_IMAGE_TYPES.has(normalizedType)) {
+    throw new Error("Use a JPG, PNG, WebP, or GIF image. This format is not supported yet.");
+  }
+
+  const localResponse = await fetch(uri);
+  if (!localResponse.ok) {
+    throw new Error("Zenigram could not read the selected image from this device.");
+  }
+  const blob = await localResponse.blob();
+  if (!blob.size || blob.size > MAX_IMAGE_BYTES) {
+    throw new Error("Each image must be smaller than 25 MB.");
+  }
+
+  const { data: created } = await api.post<{ key: string; uploadUrl: string }>(
+    "/api/media/upload",
+    { action: "create", fileName: normalizedName, contentType: normalizedType, size: blob.size },
+  );
+  if (!created?.key || !created?.uploadUrl) {
+    throw new Error("The media service did not return an upload URL.");
+  }
+
+  try {
+    await uploadBlob(created.uploadUrl, blob, normalizedType, onProgress);
+    onProgress?.(100);
+    return { key: created.key, type: "image" };
+  } catch (error) {
+    await deleteUploadedMedia([created.key]).catch(() => {});
+    throw error;
+  }
+}
+
 export async function uploadPickedImage(
   asset: ImagePicker.ImagePickerAsset,
   onProgress?: (percent: number) => void,
@@ -86,35 +125,7 @@ export async function uploadPickedImage(
 
   const fileName = safeFileName(asset.fileName || "zenigram-" + Date.now() + ".jpg");
   const contentType = String(asset.mimeType || inferImageType(fileName)).toLowerCase();
-  if (!ALLOWED_IMAGE_TYPES.has(contentType)) {
-    throw new Error("Use a JPG, PNG, WebP, or GIF image. This format is not supported yet.");
-  }
-
-  const localResponse = await fetch(asset.uri);
-  if (!localResponse.ok) {
-    throw new Error("Zenigram could not read the selected photo from this device.");
-  }
-  const blob = await localResponse.blob();
-  if (!blob.size || blob.size > MAX_IMAGE_BYTES) {
-    throw new Error("Each photo must be smaller than 25 MB.");
-  }
-
-  const { data: created } = await api.post<{ key: string; uploadUrl: string }>(
-    "/api/media/upload",
-    { action: "create", fileName, contentType, size: blob.size },
-  );
-  if (!created?.key || !created?.uploadUrl) {
-    throw new Error("The media service did not return an upload URL.");
-  }
-
-  try {
-    await uploadBlob(created.uploadUrl, blob, contentType, onProgress);
-    onProgress?.(100);
-    return { key: created.key, type: "image" };
-  } catch (error) {
-    await deleteUploadedMedia([created.key]).catch(() => {});
-    throw error;
-  }
+  return uploadLocalImage(asset.uri, fileName, contentType, onProgress);
 }
 
 async function uploadSingleVideo(
