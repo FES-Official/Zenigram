@@ -119,6 +119,7 @@ function transitionName(value) {
 export function buildClipFilterGraph({
   plan,
   textFilePaths = [],
+  hasAudio = [],
   fontRegular = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
   fontBold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
   fontItalic = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
@@ -142,6 +143,7 @@ export function buildClipFilterGraph({
       "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black",
       "setsar=1",
       "fps=30",
+      "settb=AVTB",
       "format=yuv420p",
     ];
     const selectedColorFilter = colorFilter(item.filter);
@@ -186,8 +188,7 @@ export function buildClipFilterGraph({
     videoLabels.push(videoLabel);
 
     const audioLabel = `a${index}`;
-    if (media.type === "video") {
-      // A missing audio stream is replaced with silence by the worker's probe result.
+    if (media.type === "video" && hasAudio[index]) {
       chains.push(`[${index}:a]atrim=duration=${seconds(duration)},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,apad,atrim=duration=${seconds(duration)}[${audioLabel}]`);
     } else {
       chains.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${seconds(duration)}[${audioLabel}]`);
