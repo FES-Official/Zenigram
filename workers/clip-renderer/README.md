@@ -1,6 +1,6 @@
 # Zenigram Clip Renderer
 
-The Next.js API verifies source files in S3, stores the edit timeline in DynamoDB, and publishes a small message to SQS. This worker runs outside Vercel, downloads the private source assets, renders one vertical MP4 with FFmpeg, uploads the result to S3, and marks the clip as ready in DynamoDB.
+For bearer-authenticated native mobile clip creation, the Next.js API verifies source files in S3, stores the edit timeline in DynamoDB, and publishes a small message to SQS. Website cookie-session clip publishing remains on the existing non-render path. This worker runs outside Vercel, downloads the private source assets, renders one vertical MP4 with FFmpeg, uploads the result to S3, and marks the clip as ready in DynamoDB.
 
 The worker is deliberately separate from the Next.js request lifecycle. Do not run FFmpeg inside a Vercel Route Handler.
 
@@ -28,7 +28,7 @@ The Next.js server needs these server-side settings:
 - `AWS_SQS_REGION=<queue region>` (or use the existing `AWS_REGION` / `AWS_DYNAMODB_REGION` setting)
 - Existing `AWS_BUCKET_NAME`, `AWS_S3_REGION`, `AWS_DYNAMODB_REGION`, `DYNAMODB_TABLE_NAME` and AWS credentials
 
-The API's AWS principal needs `sqs:SendMessage` on the clip-render queue. Continue to keep AWS credentials server-side; never add them to `mobile/.env` or any `EXPO_PUBLIC_*` variable.
+The API's AWS principal needs `sqs:SendMessage` on the clip-render queue. The renderer flag only activates the async path for requests carrying a valid mobile bearer token; it does not change the website's existing cookie-session publishing flow. Continue to keep AWS credentials server-side; never add them to `mobile/.env` or any `EXPO_PUBLIC_*` variable.
 
 ## Worker permissions
 
