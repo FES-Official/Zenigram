@@ -1,7 +1,7 @@
 import {
   createConversation,
   createMessage,
-  getClip,
+  getClipWithMedia,
   getUserById,
   getUserRelations,
   updateClip,
@@ -23,11 +23,11 @@ export async function POST(req, { params }) {
     if (!recipientId || recipientId === userId) return jsonError("Choose a valid recipient", 400);
 
     const [clip, sender, recipient] = await Promise.all([
-      getClip(clipId),
+      getClipWithMedia(clipId),
       getUserById(userId),
       getUserById(recipientId),
     ]);
-    if (!clip) return jsonError("Clip not found", 404);
+    if (!clip || (clip.renderStatus && clip.renderStatus !== "ready")) return jsonError("Clip not found or not ready to share", 404);
     if (!sender || !recipient || recipient.accountStatus !== "active") return jsonError("Recipient not found", 404);
 
     const [senderRelations, recipientRelations, creator, creatorRelations] = await Promise.all([
