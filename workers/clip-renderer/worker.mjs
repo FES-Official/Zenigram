@@ -164,6 +164,7 @@ function runProcess(binary, args, { onProgress, totalDuration = 0 } = {}) {
     let lineBuffer = "";
     let lastProgress = 0;
     let settled = false;
+    const progressTasks = new Set();
 
     child.stdout.on("data", chunk => {
       lineBuffer += chunk.toString("utf8");
@@ -176,7 +177,10 @@ function runProcess(binary, args, { onProgress, totalDuration = 0 } = {}) {
           const next = Math.max(12, Math.min(96, 12 + elapsed / totalDuration * 84));
           if (next - lastProgress >= 3) {
             lastProgress = next;
-            Promise.resolve(onProgress(next)).catch(error => console.error("Render progress update failed:", error));
+            const task = Promise.resolve(onProgress(next))
+              .catch(error => console.error("Render progress update failed:", error))
+              .finally(() => progressTasks.delete(task));
+            progressTasks.add(task);
           }
         }
       }
@@ -192,8 +196,11 @@ function runProcess(binary, args, { onProgress, totalDuration = 0 } = {}) {
     child.on("close", code => {
       if (settled) return;
       settled = true;
-      if (code === 0) resolve({ stderr });
-      else reject(new Error(`${basename(binary)} exited with code ${code}: ${stderr.slice(-3000)}`));
+      if (code === 0) {
+        Promise.all([...progressTasks]).then(() => resolve({ stderr }));
+      } else {
+        reject(new Error(`${basename(binary)} exited with code ${code}: ${stderr.slice(-3000)}`));
+      }
     });
   });
 }
@@ -251,26 +258,23 @@ async function renderClip(job, receiptHandle) {
 
   let latestProgress = 2;
   let heartbeatBusy = false;
-  const heartbeat = setInterval(async () => {
+  let heartbeatPromise = Promise.resolve();
+  const heartbeat = setInterval(() => {
     if (heartbeatBusy) return;
     heartbeatBusy = true;
-    try {
-      await Promise.all([
-        sqs.send(new ChangeMessageVisibilityCommand({
-          QueueUrl: QUEUE_URL,
-          ReceiptHandle: receiptHandle,
-          VisibilityTimeout: VISIBILITY_SECONDS,
-        })),
-        updateRenderFields(job.clipId, job.userId, job.renderVersion, {
-          progress: latestProgress,
-          leaseExpiresAt: nowSeconds() + VISIBILITY_SECONDS + 60,
-        }),
-      ]);
-    } catch (error) {
-      console.error("Clip render heartbeat failed:", error);
-    } finally {
-      heartbeatBusy = false;
-    }
+    heartbeatPromise = Promise.all([
+      sqs.send(new ChangeMessageVisibilityCommand({
+        QueueUrl: QUEUE_URL,
+        ReceiptHandle: receiptHandle,
+        VisibilityTimeout: VISIBILITY_SECONDS,
+      })),
+      updateRenderFields(job.clipId, job.userId, job.renderVersion, {
+        progress: latestProgress,
+        leaseExpiresAt: nowSeconds() + VISIBILITY_SECONDS + 60,
+      }),
+    ])
+      .catch(error => console.error("Clip render heartbeat failed:", error))
+      .finally(() => { heartbeatBusy = false; });
   }, HEARTBEAT_MS);
   heartbeat.unref?.();
 
@@ -405,6 +409,7 @@ async function renderClip(job, receiptHandle) {
     });
   } finally {
     clearInterval(heartbeat);
+    await heartbeatPromise.catch(() => {});
     await rm(workDir, { recursive: true, force: true });
   }
 }
