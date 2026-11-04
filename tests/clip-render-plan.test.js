@@ -58,7 +58,10 @@ test("rejects source media outside the owner's S3 prefix", () => {
 
 test("rejects invalid clip duration and mismatched timelines", () => {
   assert.throws(() => validateClipForRender(makeClip({
-    timeline: [{ mediaIndex: 0, duration: 121, trimStart: 0 }],
+    timeline: [
+      { mediaIndex: 0, duration: 121, trimStart: 0 },
+      { mediaIndex: 1, duration: 2, trimStart: 0 },
+    ],
   }), "user-123"), /invalid scene duration/);
   assert.throws(() => validateClipForRender(makeClip({
     timeline: [{ mediaIndex: 0, duration: 3, trimStart: 0 }],
