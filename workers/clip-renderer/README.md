@@ -35,7 +35,7 @@ The API's AWS principal needs `sqs:SendMessage` on the clip-render queue. The re
 Prefer an EC2 instance profile / task role rather than long-lived credentials in the container. Grant only:
 
 - SQS: `ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`, `GetQueueAttributes` on the render queue
-- S3: `GetObject`, `HeadObject`, `PutObject` on `arn:aws:s3:::YOUR_BUCKET/media/*`
+- S3: `GetObject`, `HeadObject`, `PutObject`, `DeleteObject` (orphan cleanup) on `arn:aws:s3:::YOUR_BUCKET/media/*`
 - DynamoDB: `GetItem`, `UpdateItem` on the existing `DYNAMODB_TABLE_NAME` table
 
 If the bucket uses a customer-managed KMS key, add the minimum required KMS decrypt/encrypt permissions for that key.
