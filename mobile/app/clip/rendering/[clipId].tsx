@@ -130,7 +130,7 @@ export default function ClipRenderingScreen() {
       ) : status === "failed" ? (
         <View className="rounded-3xl border p-5" style={{ backgroundColor: colors.panel, borderColor: colors.danger }}>
           <MaterialCommunityIcons name="alert-circle-outline" size={42} color={colors.danger} />
-          <Text className="mt-3 text-xl font-black" style={{ color: colors.text }}>We couldn't render this clip</Text>
+          <Text className="mt-3 text-xl font-black" style={{ color: colors.text }}>We could not render this clip</Text>
           <Text className="mt-2 text-sm leading-6" style={{ color: colors.muted }}>{error || "The render worker reported a problem."}</Text>
           {requestError ? <Text className="mt-3 text-xs leading-5" style={{ color: colors.danger }}>{requestError}</Text> : null}
           <Pressable onPress={() => void retry()} disabled={retrying} className="mt-5 flex-row items-center justify-center rounded-2xl px-4 py-4" style={{ backgroundColor: colors.rose, opacity: retrying ? 0.55 : 1 }}>
