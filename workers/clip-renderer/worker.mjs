@@ -55,9 +55,10 @@ if (!SQS_REGION || !S3_REGION || !DYNAMODB_REGION || !BUCKET || !TABLE || !QUEUE
 
 const sqs = new SQSClient({ region: SQS_REGION });
 const s3 = new S3Client({ region: S3_REGION });
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: DYNAMODB_REGION }),
-  marshallOptions: { removeUndefinedValues: true },
-});
+const ddb = DynamoDBDocumentClient.from(
+  new DynamoDBClient({ region: DYNAMODB_REGION }),
+  { marshallOptions: { removeUndefinedValues: true } },
+);
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const nowSeconds = () => Math.floor(Date.now() / 1000);
