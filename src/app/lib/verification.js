@@ -1,4 +1,4 @@
-import { createHash, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import nodemailer from "nodemailer";
 import {
   DeleteCommand,
@@ -255,7 +255,7 @@ export async function sendPhoneUpdateOtp(userId, phone) {
   const identifier = `${userId}#${normalizedPhone}`;
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   const digest = otpHash(PHONE_PURPOSE, identifier, code);
-  const requestId = createHash("sha256").update(randomInt(0, 2 ** 31).toString()).digest("hex");
+  const requestId = randomBytes(16).toString("hex");
   await reserveState(PHONE_PURPOSE, identifier, {
     ownerId: String(userId), phone: normalizedPhone, otpHash: digest, requestId,
   });
@@ -287,7 +287,7 @@ export async function sendPhoneUpdateOtp(userId, phone) {
 export async function verifyPhoneUpdateOtp(userId, phone, code) {
   const normalizedPhone = normalizeE164Phone(phone);
   const normalizedCode = String(code || "").trim();
-  if (!userId || !normalizedPhone || !/^\\d{6}$/.test(normalizedCode)) {
+  if (!userId || !normalizedPhone || !/^\d{6}$/.test(normalizedCode)) {
     throw verificationError("Enter the 6-digit SMS verification code.", "OTP_INVALID");
   }
   const identifier = `${userId}#${normalizedPhone}`;
