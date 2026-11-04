@@ -25,7 +25,19 @@ import {
   validateClipForRender,
 } from "./render-plan.mjs";
 
-const REGION = process.env.AWS_REGION || process.env.AWS_DYNAMODB_REGION || process.env.AWS_S3_REGION;
+const SQS_REGION =
+  process.env.AWS_SQS_REGION ||
+  process.env.AWS_REGION ||
+  process.env.AWS_DYNAMODB_REGION ||
+  process.env.AWS_S3_REGION;
+const S3_REGION =
+  process.env.AWS_S3_REGION ||
+  process.env.AWS_REGION ||
+  process.env.AWS_SQS_REGION;
+const DYNAMODB_REGION =
+  process.env.AWS_DYNAMODB_REGION ||
+  process.env.AWS_REGION ||
+  process.env.AWS_SQS_REGION;
 const BUCKET = process.env.AWS_BUCKET_NAME;
 const TABLE = process.env.DYNAMODB_TABLE_NAME;
 const QUEUE_URL = process.env.CLIP_RENDER_QUEUE_URL;
@@ -37,13 +49,13 @@ const MAX_SOURCE_BYTES = 2 * 1024 * 1024 * 1024;
 const OUTPUT_WIDTH = 1080;
 const OUTPUT_HEIGHT = 1920;
 
-if (!REGION || !BUCKET || !TABLE || !QUEUE_URL) {
+if (!SQS_REGION || !S3_REGION || !DYNAMODB_REGION || !BUCKET || !TABLE || !QUEUE_URL) {
   throw new Error("Set AWS_REGION, AWS_BUCKET_NAME, DYNAMODB_TABLE_NAME, and CLIP_RENDER_QUEUE_URL");
 }
 
-const sqs = new SQSClient({ region: REGION });
-const s3 = new S3Client({ region: REGION });
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }), {
+const sqs = new SQSClient({ region: SQS_REGION });
+const s3 = new S3Client({ region: S3_REGION });
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: DYNAMODB_REGION }),
   marshallOptions: { removeUndefinedValues: true },
 });
 
@@ -491,7 +503,9 @@ async function processMessage(message) {
 
 async function main() {
   console.info("Zenigram clip renderer started", {
-    region: REGION,
+    sqsRegion: SQS_REGION,
+    s3Region: S3_REGION,
+    dynamoDbRegion: DYNAMODB_REGION,
     bucket: BUCKET,
     queue: QUEUE_URL,
     ffmpeg: FFMPEG,
