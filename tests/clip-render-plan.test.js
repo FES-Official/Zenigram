@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import {
   buildClipFilterGraph,
   buildFfmpegInputArgs,
@@ -98,4 +100,25 @@ test("constructs FFmpeg input arguments without shell interpolation", () => {
     "-ss", "1.25", "-t", "3", "-i", "/tmp/source one.mp4", "-loop", "1",
   ]);
   assert.ok(args.includes("/tmp/photo;touch nope.jpg"));
+});
+
+
+test("FFmpeg worker has valid Node.js syntax", () => {
+  const workerPath = fileURLToPath(
+    new URL("../workers/clip-renderer/worker.mjs", import.meta.url),
+  );
+  const result = spawnSync(process.execPath, ["--check", workerPath], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
+test("existing EC2 bootstrap script has valid Bash syntax", () => {
+  const scriptPath = fileURLToPath(
+    new URL("../workers/clip-renderer/deploy-existing-ec2.sh", import.meta.url),
+  );
+  const result = spawnSync("bash", ["-n", scriptPath], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
 });
