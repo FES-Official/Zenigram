@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
-import nodemailer from "nodemailer";
+import { connect as tlsConnect } from "node:tls";
+import { createInterface } from "node:readline";
 import {
   DeleteCommand,
   GetCommand,
@@ -135,27 +136,78 @@ async function deleteStateIfMatches(purpose, identifier, expressionName, value) 
 
 async function sendSmtpEmail(email, code) {
   const host = process.env.SMTP_HOST?.trim();
-  const port = Number(process.env.SMTP_PORT || 587);
+  const port = Number(process.env.SMTP_PORT || 465);
   const user = process.env.SMTP_USER?.trim();
   const pass = process.env.SMTP_PASSWORD;
   const from = process.env.EMAIL_FROM?.trim() || user;
-  if (!host || !user || !pass || !from || !Number.isInteger(port)) {
+  if (!host || port !== 465 || !user || !pass || !from) {
     throw verificationError(
-      "Email delivery is not configured. Add SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD and EMAIL_FROM.",
+      "Configure SMTP_HOST, SMTP_USER, SMTP_PASSWORD and EMAIL_FROM. Use implicit TLS on SMTP_PORT=465.",
       "OTP_NOT_CONFIGURED",
     );
   }
 
-  const transporter = nodemailer.createTransport({
-    host, port, secure: port === 465, auth: { user, pass },
-    connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000,
-  });
-  await transporter.sendMail({
-    from, to: email, subject: "Your Zenigram verification code",
-    text: `Your Zenigram verification code is ${code}. It expires in 10 minutes. Do not share it.`,
-    html: `<div style="font-family:Arial,sans-serif;background:#09090b;color:#f4f4f5;padding:32px;border-radius:16px"><h1 style="color:#f87171">Zenigram</h1><p>Your email verification code:</p><div style="font-size:32px;font-weight:700;letter-spacing:8px;background:#18181b;padding:18px;border-radius:12px;text-align:center">${code}</div><p>This code expires in 10 minutes. Never share this code.</p></div>`,
-  });
-  transporter.close();
+  const socket = tlsConnect({ host, port, servername: host, rejectUnauthorized: true });
+  const lines = createInterface({ input: socket });
+  const iterator = lines[Symbol.asyncIterator]();
+  const readReply = async () => {
+    const reply = [];
+    while (true) {
+      const item = await iterator.next();
+      if (item.done) throw new Error("SMTP connection closed unexpectedly.");
+      reply.push(item.value);
+      if (/^\d{3} /.test(item.value)) break;
+      if (!/^\d{3}-/.test(item.value)) throw new Error("Invalid SMTP server response.");
+    }
+    return reply;
+  };
+  const command = async (value, accepted) => {
+    socket.write(value + "\r\n");
+    const reply = await readReply();
+    const status = Number(reply[reply.length - 1].slice(0, 3));
+    if (!accepted.includes(status)) throw new Error(`SMTP command failed (${status}).`);
+    return reply;
+  };
+
+  try {
+    await new Promise((resolve, reject) => {
+      socket.once("secureConnect", resolve);
+      socket.once("error", reject);
+      socket.setTimeout(15000, () => reject(new Error("SMTP connection timed out.")));
+    });
+    const greeting = await readReply();
+    if (!greeting[greeting.length - 1].startsWith("220 ")) throw new Error("SMTP server rejected connection.");
+    await command("EHLO zenigram.app", [250]);
+    await command("AUTH LOGIN", [334]);
+    await command(Buffer.from(user).toString("base64"), [334]);
+    await command(Buffer.from(pass).toString("base64"), [235]);
+    await command(`MAIL FROM:<${from}>`, [250]);
+    await command(`RCPT TO:<${email}>`, [250, 251]);
+    await command("DATA", [354]);
+
+    const boundary = `zenigram_${randomBytes(12).toString("hex")}`;
+    const subject = "Your Zenigram verification code";
+    const textBody = `Your Zenigram verification code is ${code}. It expires in 10 minutes. Do not share it.`;
+    const htmlBody = `<div style="font-family:Arial,sans-serif;background:#09090b;color:#f4f4f5;padding:32px;border-radius:16px"><h1 style="color:#f87171">Zenigram</h1><p>Your email verification code:</p><div style="font-size:32px;font-weight:700;letter-spacing:8px;background:#18181b;padding:18px;border-radius:12px;text-align:center">${code}</div><p>This code expires in 10 minutes. Never share this code.</p></div>`;
+    const mime = [
+      `From: ${from}`, `To: ${email}`, `Subject: ${subject}`,
+      "MIME-Version: 1.0", `Content-Type: multipart/alternative; boundary="${boundary}"`, "",
+      `--${boundary}`, "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "",
+      Buffer.from(textBody).toString("base64"), `--${boundary}`,
+      "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "",
+      Buffer.from(htmlBody).toString("base64"), `--${boundary}--`, "",
+    ].join("\r\n").replace(/(^|\r\n)\./g, "$1..");
+    socket.write(mime + "\r\n.\r\n");
+    const sent = await readReply();
+    if (!sent[sent.length - 1].startsWith("250 ")) throw new Error("SMTP server did not accept the message.");
+    await command("QUIT", [221]);
+  } catch (error) {
+    console.error("SMTP email delivery failed:", error?.message || "Unknown error");
+    throw verificationError("We could not send the verification email. Check SMTP settings and mailbox permissions.", "OTP_DELIVERY_FAILED");
+  } finally {
+    lines.close();
+    socket.end();
+  }
 }
 
 export function normalizeOtpEmail(value) {
