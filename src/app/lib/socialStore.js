@@ -156,6 +156,7 @@ function mediaValues(item) {
     item.mediaKey,
     item.mediaPublicId,
     item.mediaUrl,
+    item.renderedMediaKey,
     ...(item.mediaItems || []).flatMap((media) => [
       media?.key,
       media?.publicId,
@@ -2632,6 +2633,12 @@ export async function getClip(clipId) {
     }),
   );
   return cleanItem(result.Item);
+}
+
+export async function getClipWithMedia(clipId) {
+  const clip = await getClip(clipId);
+  if (!clip) return null;
+  return hydrateClipMedia(clip);
 }
 
 export async function updateClipRenderState({
