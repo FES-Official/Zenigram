@@ -40,6 +40,19 @@ Resources:
         deadLetterTargetArn: !GetAtt ClipRenderDeadLetterQueue.Arn
         maxReceiveCount: 5
 
+  ClipRenderApiPublisherPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "\${QueueName}-api-publisher"
+      Description: Allows the existing Zenigram API principal to enqueue clip render jobs only.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - sqs:SendMessage
+            Resource: !GetAtt ClipRenderQueue.Arn
+
   ClipRenderWorkerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -113,3 +126,7 @@ Outputs:
 
   WorkerInstanceProfileArn:
     Value: !GetAtt ClipRenderWorkerInstanceProfile.Arn
+
+  ApiPublisherPolicyArn:
+    Description: Attach this managed policy to the IAM user or role used by the existing Next.js API AWS credentials.
+    Value: !Ref ClipRenderApiPublisherPolicy
