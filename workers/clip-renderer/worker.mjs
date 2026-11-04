@@ -1,6 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { createWriteStream } from "node:fs";
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { spawn } from "node:child_process";
@@ -206,17 +205,6 @@ async function downloadSource(key, destination) {
   return Number(response.ContentLength || (await stat(destination)).size);
 }
 
-async function probeVideo(filePath) {
-  const result = await runProcess(FFPROBE, [
-    "-v", "error",
-    "-show_entries", "format=duration:stream=codec_type,duration",
-    "-of", "json",
-    filePath,
-  ]);
-  // ffprobe output is captured separately below; this helper is replaced by runProbe.
-  return result;
-}
-
 function runProbe(filePath) {
   return new Promise((resolve, reject) => {
     const child = spawn(FFPROBE, [
@@ -391,7 +379,7 @@ async function renderClip(job, receiptHandle) {
     await s3.send(new PutObjectCommand({
       Bucket: BUCKET,
       Key: renderedMediaKey,
-      Body: createWriteStream(outputPath),
+      Body: createReadStream(outputPath),
       ContentLength: outputStat.size,
       ContentType: "video/mp4",
       CacheControl: "private, max-age=31536000, immutable",
