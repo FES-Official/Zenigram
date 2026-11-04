@@ -51,7 +51,7 @@ Requirements:
 The repository is public, so you can build directly from the main branch:
 
 ```bash
-git clone --depth 1 --branch main https://github.com/FES-Official/Zenigram.git
+git clone --depth 1 --branch aws/clip-render-worker-activation https://github.com/FES-Official/Zenigram.git
 cd Zenigram
 sudo mkdir -p /var/lib/zenigram-clip-renderer/tmp
 sudo chown 1000:1000 /var/lib/zenigram-clip-renderer/tmp
