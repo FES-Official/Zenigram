@@ -4,6 +4,13 @@ const ALLOWED_TRANSITIONS = new Set(["cut", "fade", "slide", "zoom"]);
 const MAX_ITEMS = 10;
 const MAX_DURATION = 120;
 
+function bounded(value, fallback, minimum, maximum) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric)
+    ? Math.max(minimum, Math.min(maximum, numeric))
+    : fallback;
+}
+
 export function validateClipForRender(clip, expectedUserId) {
   if (!clip || !clip._id || String(clip.userId) !== String(expectedUserId)) {
     throw new Error("Clip render job does not match its owner");
@@ -57,15 +64,15 @@ export function validateClipForRender(clip, expectedUserId) {
       text: String(layer.text || "").slice(0, 180),
       start: Number(layer.start),
       end: Number(layer.end),
-      x: Math.max(0, Math.min(100, Number(layer.x ?? 50))),
-      y: Math.max(0, Math.min(100, Number(layer.y ?? 50))),
-      size: Math.max(14, Math.min(72, Number(layer.size || 32))),
+      x: bounded(layer.x, 50, 0, 100),
+      y: bounded(layer.y, 50, 0, 100),
+      size: bounded(layer.size, 32, 14, 72),
       color: /^#[0-9a-f]{6}$/i.test(layer.color) ? layer.color : "#ffffff",
       background: Boolean(layer.background),
       backgroundColor: /^#[0-9a-f]{6}$/i.test(layer.backgroundColor) ? layer.backgroundColor : "#000000",
       showBorder: Boolean(layer.showBorder),
       borderColor: /^#[0-9a-f]{6}$/i.test(layer.borderColor) ? layer.borderColor : "#ffffff",
-      borderWidth: Math.max(1, Math.min(8, Number(layer.borderWidth || 2))),
+      borderWidth: bounded(layer.borderWidth, 2, 1, 8),
       italic: Boolean(layer.italic),
       fontWeight: Number(layer.fontWeight) === 400 ? 400 : 700,
     }))
