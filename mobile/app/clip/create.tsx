@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+ import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, Switch, Text, TextInput, View, type GestureResponderEvent } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
@@ -94,33 +94,42 @@ export default function CreateClipScreen() {
   const selectedText=textLayers.find(item=>item.id===selectedTextId)||null;
   const player=useVideoPlayer(null,p=>{p.loop=false;p.muted=true;});
 
-  useEffect(()=>{
-    if(activeEntry?.type!=="video"){
+  useEffect(() => {
+  if (activeEntry?.type !== "video") {
+    player.pause();
+    player.replace(null);
+    return;
+  }
+
+  player.timeUpdateEventInterval = 0.12;
+
+  const loadSubscription = player.addListener("sourceLoad", () => {
+    player.seekBy(activeEntry.trimStart - player.currentTime);
+    player.play();
+  });
+
+  const timeSubscription = player.addListener("timeUpdate", event => {
+    const segmentEnd = activeEntry.trimStart + activeEntry.duration;
+    if (event.currentTime >= segmentEnd) {
       player.pause();
-      player.replace(null);
-      return;
+      player.seekBy(activeEntry.trimStart - event.currentTime);
     }
+  });
 
-    // The preview follows the timeline playhead and loops within this scene's trim.
-    player.timeUpdateEventInterval=0.12;
-    const loadSubscription=player.addListener("sourceLoad",()=>{
-      player.seekTo(activeEntry.trimStart);
-      player.play();
-    });
-    const timeSubscription=player.addListener("timeUpdate",event=>{
-      const segmentEnd=activeEntry.trimStart+activeEntry.duration;
-      if(event.currentTime>=segmentEnd){
-        player.pause();
-        player.seekTo(activeEntry.trimStart);
-      }
-    });
-    player.replace(activeEntry.uri);
+  player.replace(activeEntry.uri);
 
-    return ()=>{
-      loadSubscription.remove();
-      timeSubscription.remove();
-    };
-  },[player,activeEntry?.id,activeEntry?.type,activeEntry?.uri,activeEntry?.trimStart,activeEntry?.duration]);
+  return () => {
+    loadSubscription.remove();
+    timeSubscription.remove();
+  };
+}, [
+  player,
+  activeEntry?.id,
+  activeEntry?.type,
+  activeEntry?.uri,
+  activeEntry?.trimStart,
+  activeEntry?.duration,
+]);
 
   function addAssets(chosen:ImagePicker.ImagePickerAsset[]) {
     const remaining=Math.max(0,MAX_ITEMS-assets.length);
