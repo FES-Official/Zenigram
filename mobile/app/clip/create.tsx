@@ -205,8 +205,14 @@ export default function CreateClipScreen() {
         textLayers:textLayers.map(layer=>({...layer,text:layer.text.slice(0,180),start:clamp(layer.start,0,totalDuration),end:clamp(layer.end,0,totalDuration)})),
         transition,closeOnesOnly,
       });
-      if(!data?.success&&!data?.clip?._id)throw new Error("Zenigram did not confirm clip creation.");
-      setProgress(100);router.replace("/(tabs)/clips");
+      const clipId=String(data?.clip?._id||"");
+      if(!data?.success||!clipId)throw new Error("Zenigram did not confirm clip creation.");
+      setProgress(100);
+      if(data.renderStatus==="queued"||data.renderStatus==="rendering"||data.clip?.renderStatus==="queued"||data.clip?.renderStatus==="rendering"){
+        router.replace("/clip/rendering/"+encodeURIComponent(clipId));
+      }else{
+        router.replace("/(tabs)/clips");
+      }
     }catch(e){
       if(uploaded.length)await deleteUploadedMedia(uploaded.map(item=>item.key)).catch(()=>{});
       setError(getApiErrorMessage(e));

@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Zenigram asynchronous clip-render queue and dead-letter queue
+
+Resources:
+  ClipRenderDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: zenigram-clip-render-dlq
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  ClipRenderQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: zenigram-clip-render
+      VisibilityTimeout: 1200
+      ReceiveMessageWaitTimeSeconds: 20
+      MessageRetentionPeriod: 345600
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ClipRenderDeadLetterQueue.Arn
+        maxReceiveCount: 5
+
+Outputs:
+  ClipRenderQueueUrl:
+    Description: Set this as CLIP_RENDER_QUEUE_URL on the Next.js server and worker.
+    Value: !Ref ClipRenderQueue
+
+  ClipRenderQueueArn:
+    Value: !GetAtt ClipRenderQueue.Arn
+
+  ClipRenderDeadLetterQueueUrl:
+    Value: !Ref ClipRenderDeadLetterQueue

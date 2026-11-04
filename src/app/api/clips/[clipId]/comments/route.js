@@ -6,6 +6,7 @@ import { addClipComment, getClip, getUserById, getUserRelations, listClipComment
 function jsonError(message, status = 400) { return Response.json({ success: false, message }, { status }); }
 
 async function canAccessClip(clip, viewerId) {
+  if (!clip || (clip.renderStatus && clip.renderStatus !== "ready")) return false;
   const owner = await getUserById(clip.userId);
   if (!owner || owner.accountStatus !== "active") return false;
   if (!viewerId) return !owner.ishidden && !clip.closeOnesOnly;

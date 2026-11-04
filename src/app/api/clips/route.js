@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { verifyS3Object } from "@/app/lib/s3Storage";
 import { getAuthenticatedUserId } from "@/app/lib/requestAuth";
-import { createClip, getUserById, getUserRelations, listClips } from "@/app/lib/socialStore";
+import { createClip, deleteClip, getUserById, getUserRelations, listClips } from "@/app/lib/socialStore";
+import { enqueueClipRenderJob, isClipRenderingEnabled } from "@/app/lib/clipRenderQueue";
 import { filterVisibleClips, setContentAudience } from "@/app/lib/audienceStore";
 import { normalizeFeedPreferences, normalizeTopicId, rankFeedPosts } from "@/app/lib/feedRanking";
 
@@ -68,6 +69,11 @@ export async function POST(req) {
     const userId = await getAuthenticatedUserId(req);
     if (!userId) return jsonError("Unauthorized", 401);
     const body = await req.json();
+    // Keep existing website publishing unchanged; render jobs are opt-in for bearer-authenticated native clients.
+    const renderEnabled = Boolean(req.headers.get("authorization")) && isClipRenderingEnabled();
+    if (renderEnabled && !process.env.CLIP_RENDER_QUEUE_URL?.trim()) {
+      return jsonError("Clip rendering is enabled but its SQS queue is not configured", 503);
+    }
     const caption = String(body.caption || "").trim().slice(0, 500);
     const topics = [...new Set(
       (Array.isArray(body.topics) ? body.topics : [])
@@ -105,12 +111,48 @@ export async function POST(req) {
     })).filter((layer) => layer.text && Number.isFinite(layer.start) && Number.isFinite(layer.end) && layer.start < duration && layer.end > layer.start);
 
     const clip = await createClip({
-      userId: user._id, caption, media: mediaItems[0], mediaItems, topics, timeline, textLayers, duration,
-      transition: ["cut", "fade", "slide", "zoom"].includes(body.transition) ? body.transition : "fade", aspectRatio: "9:16",
+      userId: user._id,
+      caption,
+      media: mediaItems[0],
+      mediaItems,
+      topics,
+      timeline,
+      textLayers,
+      duration,
+      transition: ["cut", "fade", "slide", "zoom"].includes(body.transition) ? body.transition : "fade",
+      aspectRatio: "9:16",
+      renderStatus: renderEnabled ? "queued" : "ready",
+      renderVersion: 1,
     });
     const updated = await setContentAudience("clip", clip._id, user._id, closeOnesOnly);
+
+    if (renderEnabled) {
+      try {
+        await enqueueClipRenderJob({
+          clipId: clip._id,
+          userId: user._id,
+          renderVersion: 1,
+        });
+      } catch (queueError) {
+        console.error("Clip render queue error:", queueError);
+        // Do not leave a feed-visible clip pointing at uploads the client will clean up.
+        await deleteClip(clip._id, user._id).catch((cleanupError) => {
+          console.error("Clip cleanup after queue failure failed:", cleanupError);
+        });
+        return jsonError("Your clip was uploaded, but the render service is unavailable. Please try again.", 503);
+      }
+    }
+
     store.delete("zenigram_clip_audience");
-    return Response.json({ success: true, clip: updated ? { ...clip, closeOnesOnly } : clip }, { status: 201 });
+    const responseClip = updated
+      ? { ...clip, closeOnesOnly }
+      : clip;
+    return Response.json({
+      success: true,
+      clip: responseClip,
+      renderStatus: renderEnabled ? "queued" : "ready",
+      renderProgress: renderEnabled ? 0 : 100,
+    }, { status: renderEnabled ? 202 : 201 });
   } catch (error) {
     console.error("Clip create error:", error);
     return jsonError("Failed to create clip", 500);

@@ -19,7 +19,7 @@ function jsonError(message, status = 400) { return Response.json({ success: fals
 
 async function getVisibleClip(clipId, viewerId) {
   const clip = await getClip(clipId);
-  if (!clip) return null;
+  if (!clip || (clip.renderStatus && clip.renderStatus !== "ready")) return null;
   const owner = await getUserById(clip.userId);
   if (!owner || owner.accountStatus !== "active") return null;
   const relations = await getUserRelations(viewerId);
