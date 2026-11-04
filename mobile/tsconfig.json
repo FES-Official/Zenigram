@@ -5,7 +5,18 @@
     "noEmit": true,
     "baseUrl": ".",
     "ignoreDeprecations": "6.0",
-    "paths": {"@/*": ["./src/*"]}
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
   },
-  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "nativewind-env.d.ts", "global.d.ts"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "nativewind-env.d.ts",
+    "global.d.ts",
+    "expo-env.d.ts"
+  ]
 }
