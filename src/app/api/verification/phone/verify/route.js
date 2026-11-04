@@ -24,7 +24,10 @@ export async function POST(request) {
     await verifyPhoneUpdateOtp(session.user.id, phone, body?.code);
     return NextResponse.json({ message: "Phone number verified successfully." });
   } catch (error) {
-    const status = error?.code === "OTP_NOT_CONFIGURED" ? 503 : 400;
+    const status =
+      error?.code === "OTP_NOT_CONFIGURED" ? 503 :
+      error?.code === "OTP_LOCKED" ? 429 :
+      error?.code === "OTP_EXPIRED" ? 410 : 400;
     return NextResponse.json(
       { message: error?.message || "Could not verify the SMS code." },
       { status },
