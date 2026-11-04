@@ -72,9 +72,8 @@ test("builds cut render graph with scene filters, timed text, and silence for im
     textFilePaths: ["/tmp/overlay-0.txt"],
     hasAudio: [true, false],
   });
-  assert.match(graph.filterComplex, /xfade=/);
   assert.match(graph.filterComplex, /concat=n=2:v=1:a=0/);
-  assert.match(graph.filterComplex, /acrossfade/ === true ? /acrossfade/ : /anullsrc/);
+  assert.match(graph.filterComplex, /concat=n=2:v=0:a=1/);
   assert.match(graph.filterComplex, /anullsrc/);
   assert.match(graph.filterComplex, /drawtext/);
   assert.match(graph.filterComplex, /between\(t,/);
