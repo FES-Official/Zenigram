@@ -1,18 +1,37 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Zenigram asynchronous clip-render queue and dead-letter queue
+Description: Zenigram clip-render SQS queues and least-privilege EC2 worker instance profile
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Existing private S3 bucket containing media/{userId}/... source files.
+    AllowedPattern: "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+  DynamoDBTableName:
+    Type: String
+    Description: Existing Zenigram single-table DynamoDB table containing CLIP# items.
+    MinLength: 3
+    MaxLength: 255
+  QueueName:
+    Type: String
+    Default: zenigram-clip-render
+    AllowedPattern: "^[A-Za-z0-9_-]{1,70}$"
+  WorkerRoleName:
+    Type: String
+    Default: ZenigramClipRenderWorkerRole
+    AllowedPattern: "^[A-Za-z0-9+=,.@_-]{1,64}$"
 
 Resources:
   ClipRenderDeadLetterQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: zenigram-clip-render-dlq
+      QueueName: !Sub "${QueueName}-dlq"
       MessageRetentionPeriod: 1209600
       SqsManagedSseEnabled: true
 
   ClipRenderQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: zenigram-clip-render
+      QueueName: !Ref QueueName
       VisibilityTimeout: 1200
       ReceiveMessageWaitTimeSeconds: 20
       MessageRetentionPeriod: 345600
@@ -21,9 +40,72 @@ Resources:
         deadLetterTargetArn: !GetAtt ClipRenderDeadLetterQueue.Arn
         maxReceiveCount: 5
 
+  ClipRenderApiPublisherPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${QueueName}-api-publisher"
+      Description: Allows the existing Zenigram API principal to enqueue clip render jobs only.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - sqs:SendMessage
+            Resource: !GetAtt ClipRenderQueue.Arn
+
+  ClipRenderWorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref WorkerRoleName
+      Description: Least-privilege EC2 instance role for Zenigram FFmpeg clip rendering.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ZenigramClipRenderWorkerLeastPrivilege
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadAndWriteOnlyZenigramMediaObjects
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${BucketName}/media/*"
+              - Sid: ConsumeOnlyClipRenderQueue
+                Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:ChangeMessageVisibility
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt ClipRenderQueue.Arn
+              - Sid: UpdateOnlyClipPartitionKeys
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                Resource: !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DynamoDBTableName}"
+                Condition:
+                  ForAllValues:StringLike:
+                    dynamodb:LeadingKeys:
+                      - "CLIP#*"
+
+  ClipRenderWorkerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "${WorkerRoleName}-InstanceProfile"
+      Roles:
+        - !Ref ClipRenderWorkerRole
+
 Outputs:
   ClipRenderQueueUrl:
-    Description: Set this as CLIP_RENDER_QUEUE_URL on the Next.js server and worker.
+    Description: Set this as CLIP_RENDER_QUEUE_URL on Vercel and the worker host.
     Value: !Ref ClipRenderQueue
 
   ClipRenderQueueArn:
@@ -31,3 +113,20 @@ Outputs:
 
   ClipRenderDeadLetterQueueUrl:
     Value: !Ref ClipRenderDeadLetterQueue
+
+  ClipRenderDeadLetterQueueArn:
+    Value: !GetAtt ClipRenderDeadLetterQueue.Arn
+
+  WorkerRoleArn:
+    Description: Attach this IAM role (via the instance profile) to the EC2 worker host.
+    Value: !GetAtt ClipRenderWorkerRole.Arn
+
+  WorkerInstanceProfileName:
+    Value: !Ref ClipRenderWorkerInstanceProfile
+
+  WorkerInstanceProfileArn:
+    Value: !GetAtt ClipRenderWorkerInstanceProfile.Arn
+
+  ApiPublisherPolicyArn:
+    Description: Attach this managed policy to the IAM user or role used by the existing Next.js API AWS credentials.
+    Value: !Ref ClipRenderApiPublisherPolicy
