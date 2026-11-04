@@ -23,4 +23,4 @@ CloudFormation requires `CAPABILITY_NAMED_IAM`.
 
 The Compose service uses host networking so the AWS SDK can use the EC2 instance profile through IMDSv2 without embedding credentials. Require IMDSv2 on the instance and do not set static AWS keys in `.env.worker`. The container is non-root, read-only except for a bounded temporary filesystem, drops Linux capabilities, and does not expose a listening port.
 
-The worker needs temporary disk space for the downloaded inputs, intermediates and final output. Its 12 GB tmpfs is memory-backed; size the EC2 RAM accordingly or change it to a host-mounted encrypted EBS directory for larger jobs.
+The worker needs temporary disk space for downloaded inputs, intermediates and final output. Compose mounts `/var/lib/zenigram-clip-renderer/tmp` from the host, so put this directory on an encrypted EBS volume, create it before starting Compose, and assign it to UID/GID 1000.
