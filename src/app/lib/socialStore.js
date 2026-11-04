@@ -2549,6 +2549,8 @@ export async function createClip({
   duration = 0,
   transition = "fade",
   aspectRatio = "9:16",
+  renderStatus = "ready",
+  renderVersion = 1,
 }) {
   const id = newId();
   const createdAt = now();
@@ -2569,6 +2571,11 @@ export async function createClip({
     duration: Number(duration || timeline.reduce((sum, item) => sum + Number(item.duration || 0), 0)),
     transition,
     aspectRatio,
+    renderStatus,
+    renderVersion: Math.max(1, Number(renderVersion) || 1),
+    renderProgress: renderStatus === "ready" ? 100 : 0,
+    renderAttempts: 0,
+    renderUpdatedAt: createdAt,
     likes: [],
     views: [],
     shares: 0,
@@ -2597,12 +2604,15 @@ export async function createClip({
 
 async function hydrateClipMedia(clip) {
   if (!clip) return clip;
-  const mediaItems = await Promise.all(
-    (clip.mediaItems?.length
+  const rendered = clip.renderStatus === "ready" && clip.renderedMediaKey
+    ? [{ key: clip.renderedMediaKey, type: "video" }]
+    : null;
+  const storedItems = rendered || (
+    clip.mediaItems?.length
       ? clip.mediaItems
       : [{ key: clip.mediaPublicId, url: clip.mediaUrl, type: clip.mediaType }]
-    ).map(hydrateMediaItem),
   );
+  const mediaItems = await Promise.all(storedItems.map(hydrateMediaItem));
   const user = clip.user ? await hydrateUserMedia(clip.user) : clip.user;
   return {
     ...clip,
@@ -2622,6 +2632,85 @@ export async function getClip(clipId) {
     }),
   );
   return cleanItem(result.Item);
+}
+
+export async function updateClipRenderState({
+  clipId,
+  userId,
+  renderVersion,
+  status,
+  progress = 0,
+  renderedMediaKey,
+  renderedDuration,
+  error = "",
+}) {
+  const names = {
+    "#status": "renderStatus",
+    "#progress": "renderProgress",
+    "#updated": "updatedAt",
+    "#renderUpdated": "renderUpdatedAt",
+  };
+  const values = {
+    ":userId": String(userId),
+    ":version": Number(renderVersion),
+    ":status": String(status),
+    ":progress": Math.max(0, Math.min(100, Math.round(Number(progress) || 0))),
+    ":now": now(),
+  };
+  const sets = [
+    "#status = :status",
+    "#progress = :progress",
+    "#updated = :now",
+    "#renderUpdated = :now",
+  ];
+  const removes = ["renderLeaseExpiresAt"];
+  if (typeof renderedMediaKey === "string" && renderedMediaKey) {
+    names["#renderedKey"] = "renderedMediaKey";
+    values[":renderedKey"] = renderedMediaKey;
+    sets.push("#renderedKey = :renderedKey");
+  }
+  if (Number.isFinite(Number(renderedDuration)) && renderedDuration > 0) {
+    names["#renderedDuration"] = "renderedDuration";
+    values[":renderedDuration"] = Number(renderedDuration);
+    sets.push("#renderedDuration = :renderedDuration");
+  }
+  if (typeof error === "string") {
+    names["#renderError"] = "renderError";
+    values[":renderError"] = error.slice(0, 500);
+    sets.push("#renderError = :renderError");
+  }
+
+  const result = await client().send(new UpdateCommand({
+    TableName: table(),
+    Key: { PK: clipPk(clipId), SK: "META" },
+    UpdateExpression: `SET ${sets.join(", ")} REMOVE ${removes.join(", ")}`,
+    ConditionExpression: "userId = :userId AND renderVersion = :version",
+    ExpressionAttributeNames: names,
+    ExpressionAttributeValues: values,
+    ReturnValues: "ALL_NEW",
+  }));
+  return cleanItem(result.Attributes);
+}
+
+export async function queueClipRenderRetry(clipId, userId) {
+  const result = await client().send(new UpdateCommand({
+    TableName: table(),
+    Key: { PK: clipPk(clipId), SK: "META" },
+    UpdateExpression:
+      "SET renderStatus = :queued, renderProgress = :zero, renderVersion = renderVersion + :one, renderError = :empty, renderUpdatedAt = :now, updatedAt = :now REMOVE renderLeaseExpiresAt",
+    ConditionExpression: "userId = :userId AND renderStatus = :failed",
+    ExpressionAttributeValues: {
+      ":userId": String(userId),
+      ":queued": "queued",
+      ":failed": "failed",
+      ":zero": 0,
+      ":one": 1,
+      ":empty": "",
+      ":now": now(),
+    },
+    ReturnValues: "ALL_NEW",
+  }));
+  return cleanItem(result.Attributes);
 }
 
 function clipTopics(clip) {
@@ -2737,7 +2826,9 @@ export async function listClips(viewerId, limit = 80, providedRelations = null, 
   const map = new Map(hydratedUsers.map((item) => [item._id, item]));
   const eligibleClips = clips.filter((clip) => {
     const owner = map.get(clip.userId);
+    const renderReady = !clip.renderStatus || clip.renderStatus === "ready";
     return (
+      renderReady &&
       owner?.accountStatus === "active" &&
       !excludedUsers.has(clip.userId) &&
       (!owner.ishidden ||
