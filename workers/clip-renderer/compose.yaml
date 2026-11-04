@@ -14,13 +14,13 @@ services:
     environment:
       NODE_ENV: production
     read_only: true
-    tmpfs:
-      - /tmp:rw,nosuid,nodev,size=12g,mode=1777
+    volumes:
+      - /var/lib/zenigram-clip-renderer/tmp:/tmp
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    mem_limit: 10g
+    mem_limit: 7g
     cpus: 4.0
     pids_limit: 512
     logging:
