@@ -43,7 +43,7 @@ Resources:
   ClipRenderApiPublisherPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: !Sub "\${QueueName}-api-publisher"
+      ManagedPolicyName: !Sub "${QueueName}-api-publisher"
       Description: Allows the existing Zenigram API principal to enqueue clip render jobs only.
       PolicyDocument:
         Version: "2012-10-17"
