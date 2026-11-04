@@ -1,0 +1,168 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Zenigram clip renderer SQS queues and least-privilege IAM policies.
+  Does not create an EC2 instance or change existing application credentials.
+
+Parameters:
+  MediaBucketName:
+    Type: String
+    Description: Existing private S3 bucket used by Zenigram media uploads.
+    AllowedPattern: "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+    ConstraintDescription: Enter the exact existing S3 bucket name.
+  DynamoDBTableName:
+    Type: String
+    Description: Existing DynamoDB table used by Zenigram social data.
+    MinLength: 3
+    MaxLength: 255
+  DynamoDBRegion:
+    Type: String
+    Default: ""
+    Description: >-
+      Region of the existing DynamoDB table. Leave blank when it is the same
+      region as this CloudFormation stack.
+    AllowedPattern: "^$|^[a-z]{2}(-gov)?-[a-z]+-\\d$"
+  QueueName:
+    Type: String
+    Default: zenigram-clip-render
+    AllowedPattern: "^[A-Za-z0-9_-]{1,80}$"
+  DeadLetterQueueName:
+    Type: String
+    Default: zenigram-clip-render-dlq
+    AllowedPattern: "^[A-Za-z0-9_-]{1,80}$"
+
+Conditions:
+  DynamoDBRegionProvided: !Not [!Equals [!Ref DynamoDBRegion, ""]]
+
+Resources:
+  ClipRenderDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref DeadLetterQueueName
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+      Tags:
+        - Key: Application
+          Value: Zenigram
+        - Key: Purpose
+          Value: ClipRenderingDeadLetterQueue
+
+  ClipRenderQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref QueueName
+      VisibilityTimeout: 1200
+      ReceiveMessageWaitTimeSeconds: 20
+      MessageRetentionPeriod: 345600
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ClipRenderDeadLetterQueue.Arn
+        maxReceiveCount: 5
+      Tags:
+        - Key: Application
+          Value: Zenigram
+        - Key: Purpose
+          Value: ClipRendering
+
+  ClipRenderWorkerPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Read source media, write rendered media, process clip queue, and update clip render state only.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ConsumeClipRenderQueue
+            Effect: Allow
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:ChangeMessageVisibility
+              - sqs:GetQueueAttributes
+            Resource: !GetAtt ClipRenderQueue.Arn
+          - Sid: AccessZenigramClipMediaObjects
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource: !Sub "arn:${AWS::Partition}:s3:::${MediaBucketName}/media/*"
+          - Sid: UpdateZenigramClipRenderRecords
+            Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:UpdateItem
+            Resource: !If
+              - DynamoDBRegionProvided
+              - !Sub "arn:${AWS::Partition}:dynamodb:${DynamoDBRegion}:${AWS::AccountId}:table/${DynamoDBTableName}"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DynamoDBTableName}"
+      Tags:
+        - Key: Application
+          Value: Zenigram
+
+  ClipRenderApiPublisherPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Allows the existing Zenigram API identity to enqueue clip render jobs only.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnqueueZenigramClipRenderJobs
+            Effect: Allow
+            Action:
+              - sqs:SendMessage
+            Resource: !GetAtt ClipRenderQueue.Arn
+      Tags:
+        - Key: Application
+          Value: Zenigram
+
+  ClipRenderWorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: EC2 instance role for the Zenigram FFmpeg clip renderer.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref ClipRenderWorkerPolicy
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+      Tags:
+        - Key: Application
+          Value: Zenigram
+        - Key: Purpose
+          Value: ClipRendererWorker
+
+  ClipRenderWorkerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref ClipRenderWorkerRole
+
+Outputs:
+  ClipRenderQueueUrl:
+    Description: Set as CLIP_RENDER_QUEUE_URL on the Vercel API and worker host.
+    Value: !Ref ClipRenderQueue
+  ClipRenderQueueArn:
+    Value: !GetAtt ClipRenderQueue.Arn
+  ClipRenderDeadLetterQueueUrl:
+    Value: !Ref ClipRenderDeadLetterQueue
+  ClipRenderDeadLetterQueueArn:
+    Value: !GetAtt ClipRenderDeadLetterQueue.Arn
+  QueueRegion:
+    Description: Set as AWS_SQS_REGION in Vercel and the worker.
+    Value: !Ref AWS::Region
+  ClipRenderWorkerPolicyArn:
+    Description: Attach to an existing EC2 instance role if reusing an existing host.
+    Value: !Ref ClipRenderWorkerPolicy
+  ClipRenderApiPublisherPolicyArn:
+    Description: Attach to the exact IAM user or role used by Vercel's existing AWS credentials.
+    Value: !Ref ClipRenderApiPublisherPolicy
+  ClipRenderWorkerRoleArn:
+    Value: !GetAtt ClipRenderWorkerRole.Arn
+  ClipRenderWorkerInstanceProfileName:
+    Description: Attach this profile to a dedicated EC2 worker, or use the worker policy with an existing EC2 role.
+    Value: !Ref ClipRenderWorkerInstanceProfile

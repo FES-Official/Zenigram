@@ -62,6 +62,7 @@ Edit `workers/clip-renderer/.env.worker` with the real region, existing bucket/t
 
 Start the worker:
 
+Check the host with:
 ```bash
 docker compose -f workers/clip-renderer/compose.yaml up -d --build
 docker compose -f workers/clip-renderer/compose.yaml logs -f
