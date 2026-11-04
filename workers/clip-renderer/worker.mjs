@@ -11,6 +11,7 @@ import {
   SQSClient,
 } from "@aws-sdk/client-sqs";
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -379,6 +380,18 @@ async function renderClip(job, receiptHandle) {
 
     latestProgress = 97;
     await updateRenderFields(job.clipId, job.userId, job.renderVersion, { progress: latestProgress });
+
+    const currentClip = await getClip(job.clipId);
+    if (
+      !currentClip ||
+      String(currentClip.userId) !== job.userId ||
+      Number(currentClip.renderVersion) !== job.renderVersion ||
+      currentClip.renderStatus !== "rendering"
+    ) {
+      console.info("Clip was deleted or superseded before upload; discarding render output", job.clipId);
+      return;
+    }
+
     const renderedMediaKey = `media/${job.userId}/clips/rendered/${job.clipId}/v${job.renderVersion}.mp4`;
     await s3.send(new PutObjectCommand({
       Bucket: BUCKET,
@@ -393,14 +406,21 @@ async function renderClip(job, receiptHandle) {
       },
     }));
 
-    await updateRenderFields(job.clipId, job.userId, job.renderVersion, {
-      status: "ready",
-      progress: 100,
-      renderedMediaKey,
-      renderedDuration: graph.outputDuration,
-      error: "",
-      removeLease: true,
-    });
+    try {
+      await updateRenderFields(job.clipId, job.userId, job.renderVersion, {
+        status: "ready",
+        progress: 100,
+        renderedMediaKey,
+        renderedDuration: graph.outputDuration,
+        error: "",
+        removeLease: true,
+      });
+    } catch (stateError) {
+      await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: renderedMediaKey })).catch(deleteError => {
+        console.error("Could not clean up an orphaned rendered clip:", deleteError);
+      });
+      throw stateError;
+    }
     console.info("Clip render completed", {
       clipId: job.clipId,
       bytes: outputStat.size,
