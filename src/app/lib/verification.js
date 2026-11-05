@@ -243,9 +243,9 @@ export async function verifySignupEmailOtp(email, code) {
       TableName: table(),
       Key: stateKey(EMAIL_PURPOSE, normalizedEmail),
       UpdateExpression:
-        "SET #status = :verified, verifiedAt = :verifiedAt, expiresAt = :expiresAt, ttl = :expiresAt REMOVE otpHash, attempts",
+        "SET #status = :verified, verifiedAt = :verifiedAt, expiresAt = :expiresAt, #ttl = :expiresAt REMOVE otpHash, attempts",
       ConditionExpression: "#status = :pending AND expiresAt > :now",
-      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeNames: { "#status": "status", "#ttl": "ttl" },
       ExpressionAttributeValues: {
         ":verified": "verified",
         ":verifiedAt": new Date().toISOString(),
@@ -329,9 +329,9 @@ export async function verifyPhoneUpdateOtp(userId, phone, code) {
   }
   await client().send(new UpdateCommand({
     TableName: table(), Key: stateKey(PHONE_PURPOSE, identifier),
-    UpdateExpression: "SET #status = :verified, verifiedAt = :verifiedAt, expiresAt = :expiresAt, ttl = :expiresAt REMOVE otpHash, requestId, attempts",
+    UpdateExpression: "SET #status = :verified, verifiedAt = :verifiedAt, expiresAt = :expiresAt, #ttl = :expiresAt REMOVE otpHash, requestId, attempts",
     ConditionExpression: "#status = :pending AND expiresAt > :now AND ownerId = :ownerId AND phone = :phone",
-    ExpressionAttributeNames: { "#status": "status" },
+    ExpressionAttributeNames: { "#status": "status", "#ttl": "ttl" },
     ExpressionAttributeValues: {
       ":verified": "verified", ":verifiedAt": new Date().toISOString(),
       ":expiresAt": now + OTP_TTL_SECONDS, ":pending": "pending", ":now": now,
