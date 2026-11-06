@@ -694,7 +694,7 @@ export default function EditAccountPage() {
               </div>
 
               <section className="rounded-3xl border border-red-500/20 bg-red-950/10 p-6">
-                <logoutbtn/>
+                <Logoutbtn/>
                 <div className="flex items-start gap-3">
                   <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-red-500/10 text-red-400">
                     <ShieldAlert className="size-5" />
