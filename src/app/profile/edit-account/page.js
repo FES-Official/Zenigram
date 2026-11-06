@@ -19,6 +19,8 @@ import {
   X,
 } from "lucide-react";
 
+import LogoutBtn from "../../../../components/logoutBtn";
+
 import Navbar from "../../../../components/navbar";
 import { uploadMediaDirect } from "@/app/lib/directS3Upload";
 
@@ -692,6 +694,7 @@ export default function EditAccountPage() {
               </div>
 
               <section className="rounded-3xl border border-red-500/20 bg-red-950/10 p-6">
+                <logoutbtn/>
                 <div className="flex items-start gap-3">
                   <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-red-500/10 text-red-400">
                     <ShieldAlert className="size-5" />
@@ -700,8 +703,8 @@ export default function EditAccountPage() {
                     <h2 className="font-bold text-red-100">Danger zone</h2>
                     <p className="mt-1 text-sm leading-6 text-zinc-500">
                       Deactivation is reversible when you sign in again.
-                      Permanent deletion removes your DynamoDB data and owned S3
-                      media.
+                      Permanent deletion removes your whole data and owned
+                      media from the database parmanently.
                     </p>
                   </div>
                 </div>
