@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import "@/app/globals.css";
 
-import LogoutBtn from "../../../../components/logoutBtn";
 import SupportButton from "../../../../components/supportbtn";
 import Navbar from "../../../../components/navbar";
 import PostGrid from "../../../../components/postGrid";
@@ -390,7 +389,6 @@ export default function Profile() {
       <Navbar />
 
       <div className="fixed right-4 top-4 z-50">
-        <LogoutBtn />
       </div>
 
       <main className="relative z-10 mx-auto w-full max-w-5xl px-3 pb-16 pt-24 sm:px-6">
