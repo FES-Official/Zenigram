@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
+import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
 import {
   DeleteCommand,
   GetCommand,
@@ -260,12 +261,29 @@ export async function verifySignupEmailOtp(email, code) {
 export async function sendPhoneUpdateOtp(userId, phone) {
   const normalizedPhone = normalizeE164Phone(phone);
   if (!userId || !normalizedPhone) {
-    throw verificationError("Enter a valid phone number in international format, such as +919876543210.", "OTP_INVALID_TARGET");
+    throw verificationError(
+      "Enter a valid phone number in international format, such as +919876543210.",
+      "OTP_INVALID_TARGET",
+    );
   }
-  const authKey = process.env.MSG91_AUTH_KEY?.trim();
-  const templateId = process.env.MSG91_OTP_TEMPLATE_ID?.trim();
-  if (!authKey || !templateId) {
-    throw verificationError("SMS delivery is not configured. Add MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID.", "OTP_NOT_CONFIGURED");
+
+  const region = (
+    process.env.AWS_SNS_REGION ||
+    process.env.AWS_REGION ||
+    process.env.AWS_DYNAMODB_REGION ||
+    "ap-south-1"
+  ).trim();
+  const senderId = process.env.AWS_SNS_SENDER_ID?.trim();
+  const entityId = process.env.AWS_SNS_ENTITY_ID?.trim();
+  const templateId = process.env.AWS_SNS_TEMPLATE_ID?.trim();
+  const isIndianNumber = normalizedPhone.startsWith("+91");
+
+  // Indian local SMS routes require a registered sender ID and TRAI DLT IDs.
+  if (isIndianNumber && (!senderId || !entityId || !templateId)) {
+    throw verificationError(
+      "Amazon SNS India SMS is not fully configured. Add AWS_SNS_SENDER_ID, AWS_SNS_ENTITY_ID and AWS_SNS_TEMPLATE_ID after completing DLT registration.",
+      "OTP_NOT_CONFIGURED",
+    );
   }
 
   const identifier = `${userId}#${normalizedPhone}`;
@@ -273,30 +291,61 @@ export async function sendPhoneUpdateOtp(userId, phone) {
   const digest = otpHash(PHONE_PURPOSE, identifier, code);
   const requestId = randomBytes(16).toString("hex");
   await reserveState(PHONE_PURPOSE, identifier, {
-    ownerId: String(userId), phone: normalizedPhone, otpHash: digest, requestId,
+    ownerId: String(userId),
+    phone: normalizedPhone,
+    otpHash: digest,
+    requestId,
   });
 
   try {
-    const url = new URL("https://control.msg91.com/api/v5/otp");
-    url.searchParams.set("template_id", templateId);
-    url.searchParams.set("mobile", normalizedPhone.replace("+", ""));
-    url.searchParams.set("otp", code);
-    url.searchParams.set("otp_length", "6");
-    url.searchParams.set("otp_expiry", "10");
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { authkey: authKey, "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({}),
-      signal: AbortSignal.timeout(12000),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || result.type !== "success") {
-      console.error("MSG91 SMS delivery failed:", response.status, JSON.stringify(result).slice(0, 500));
-      throw verificationError("We could not send the SMS code. Check MSG91 credentials, approved OTP template and DLT mapping.", "OTP_DELIVERY_FAILED");
+    const messageAttributes = {
+      "AWS.SNS.SMS.SMSType": {
+        DataType: "String",
+        StringValue: "Transactional",
+      },
+    };
+
+    if (senderId) {
+      messageAttributes["AWS.SNS.SMS.SenderID"] = {
+        DataType: "String",
+        StringValue: senderId,
+      };
+    }
+
+    if (isIndianNumber) {
+      messageAttributes["AWS.MM.SMS.EntityId"] = {
+        DataType: "String",
+        StringValue: entityId,
+      };
+      messageAttributes["AWS.MM.SMS.TemplateId"] = {
+        DataType: "String",
+        StringValue: templateId,
+      };
+    }
+
+    const sns = new SNSClient({ region });
+    const result = await sns.send(
+      new PublishCommand({
+        PhoneNumber: normalizedPhone,
+        Message: `Your Zenigram verification code is ${code}. It expires in 10 minutes. Do not share this code.`,
+        MessageAttributes: messageAttributes,
+      }),
+    );
+
+    if (!result.MessageId) {
+      throw new Error("Amazon SNS did not return a message ID.");
     }
   } catch (error) {
+    console.error(
+      "Amazon SNS SMS delivery failed:",
+      error?.name || "UnknownError",
+      error?.message || "",
+    );
     await deleteStateIfMatches(PHONE_PURPOSE, identifier, "requestId", requestId);
-    throw error;
+    throw verificationError(
+      "We could not send the SMS code. Check AWS SNS permissions, SMS sandbox status, sender ID and India DLT registration.",
+      "OTP_DELIVERY_FAILED",
+    );
   }
 }
 
