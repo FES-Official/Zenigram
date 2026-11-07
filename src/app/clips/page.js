@@ -367,11 +367,8 @@ export default function ClipsPage() {
                   <ReelAction onClick={() => setOptionsClip(clip)} ariaLabel="More clip options" label="More" icon={<MoreIcon />} />
                   <ReelAction active={clip.viewerLiked} disabled={updatingClips.has(`${clip._id}-like`)} onClick={() => void handleLike(clip._id)} ariaLabel={clip.viewerLiked ? "Unlike clip" : "Like clip"} label={formatCount(likesCount)} icon={<HeartIcon filled={clip.viewerLiked} />} />
                   <ReelAction onClick={() => setCommentsClip(clip)} ariaLabel="Open clip comments" label={formatCount(clip.commentsCount || 0)} icon={<CommentIcon />} />
-                  <ReelMetric value={formatCount(viewsCount)} icon={<EyeIcon />} />
                   <ReelAction onClick={() => setSharingClip(clip)} ariaLabel="Share clip in a message" label={formatCount(clip.shares || 0)} icon={<ShareIcon />} />
-                  <Link href={clip.user?.username ? `/profile/${clip.user.username}` : "#"} aria-label={`Visit ${username}'s profile`} className="mt-1 rounded-full bg-linear-to-tr from-amber-400 via-red-500 to-fuchsia-600 p-0.5 shadow-lg transition hover:scale-105 active:scale-95">
-                    <Image src={avatar} alt={username} width={48} height={48} unoptimized className="h-11 w-11 rounded-full border-2 border-black object-cover" />
-                  </Link>
+                 
                 </aside>
 
                 <div className="absolute bottom-5 left-4 right-20 z-40 sm:bottom-6">
