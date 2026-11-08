@@ -277,11 +277,15 @@ export async function sendPhoneUpdateOtp(userId, phone) {
   const entityId = process.env.AWS_SNS_ENTITY_ID?.trim();
   const templateId = process.env.AWS_SNS_TEMPLATE_ID?.trim();
   const isIndianNumber = normalizedPhone.startsWith("+91");
+  const hasAnyIndiaDltSetting = Boolean(senderId || entityId || templateId);
+  const hasCompleteIndiaDltSettings = Boolean(senderId && entityId && templateId);
 
-  // Indian local SMS routes require a registered sender ID and TRAI DLT IDs.
-  if (isIndianNumber && (!senderId || !entityId || !templateId)) {
+  // India ILDO is the AWS default route and does not need DLT IDs.
+  // If any DLT setting is supplied, require the complete set to avoid
+  // accidentally attempting a partially configured local route.
+  if (isIndianNumber && hasAnyIndiaDltSetting && !hasCompleteIndiaDltSettings) {
     throw verificationError(
-      "Amazon SNS India SMS is not fully configured. Add AWS_SNS_SENDER_ID, AWS_SNS_ENTITY_ID and AWS_SNS_TEMPLATE_ID after completing DLT registration.",
+      "India DLT settings are incomplete. Add AWS_SNS_SENDER_ID, AWS_SNS_ENTITY_ID and AWS_SNS_TEMPLATE_ID together, or remove all three to use the default ILDO route.",
       "OTP_NOT_CONFIGURED",
     );
   }
@@ -305,14 +309,14 @@ export async function sendPhoneUpdateOtp(userId, phone) {
       },
     };
 
-    if (senderId) {
+    // Add DLT attributes only when the complete registered India local-route
+    // configuration exists. Otherwise omit origination/DLT attributes so AWS
+    // selects its default ILDO route for India.
+    if (isIndianNumber && hasCompleteIndiaDltSettings) {
       messageAttributes["AWS.SNS.SMS.SenderID"] = {
         DataType: "String",
         StringValue: senderId,
       };
-    }
-
-    if (isIndianNumber) {
       messageAttributes["AWS.MM.SMS.EntityId"] = {
         DataType: "String",
         StringValue: entityId,
@@ -320,6 +324,11 @@ export async function sendPhoneUpdateOtp(userId, phone) {
       messageAttributes["AWS.MM.SMS.TemplateId"] = {
         DataType: "String",
         StringValue: templateId,
+      };
+    } else if (!isIndianNumber && senderId) {
+      messageAttributes["AWS.SNS.SMS.SenderID"] = {
+        DataType: "String",
+        StringValue: senderId,
       };
     }
 
