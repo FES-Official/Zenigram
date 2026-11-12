@@ -695,15 +695,6 @@ export default function StoryGlobe() {
       </header>
 
       <aside className="absolute left-3 top-40 z-20 w-[min(72vw,210px)] border border-cyan-200/20 bg-[#06101a]/80 p-3 backdrop-blur-md md:left-7 md:top-1/2 md:-translate-y-1/2">
-        <button
-          type="button"
-          disabled={!stories.length}
-          onClick={() => setSelectedGroupId("all-stories")}
-          className="flex w-full items-center justify-center gap-2 border border-cyan-300/50 bg-cyan-300/10 px-3 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100 disabled:opacity-40"
-        >
-          <IoPlay />
-          Watch loaded stories
-        </button>
 
         <label
           htmlFor="story-location-search"
