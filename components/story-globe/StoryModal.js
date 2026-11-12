@@ -1,3 +1,4 @@
+
 "use client";
 
 import Image from "next/image";
@@ -27,14 +28,18 @@ import {
   IoSparkles,
 } from "react-icons/io5";
 
+/* =========================================================
+   HELPERS
+========================================================= */
+
 function getDurationMs(story) {
   const seconds = Number(story?.duration);
 
-  const safeSeconds = Number.isFinite(seconds)
-    ? Math.min(Math.max(seconds, 5), 60)
-    : 15;
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return 15000;
+  }
 
-  return safeSeconds * 1000;
+  return Math.min(Math.max(seconds, 5), 60) * 1000;
 }
 
 function formatStoryTime(value) {
@@ -53,81 +58,29 @@ function formatStoryTime(value) {
 }
 
 function formatRelativeCount(value) {
-  const count = Number(value || 0);
+  const count = Number(value);
+
+  if (!Number.isFinite(count) || count <= 0) {
+    return "0";
+  }
 
   if (count < 1000) {
-    return String(count);
+    return String(Math.floor(count));
   }
 
-  if (count < 1_000_000) {
-    return `${(
-      count / 1000
-    ).toFixed(count < 10_000 ? 1 : 0)}K`;
+  if (count < 1000000) {
+    return `${(count / 1000).toFixed(
+      count < 10000 ? 1 : 0
+    )}K`;
   }
 
-  if (count < 1_000_000_000) {
-    return `${(
-      count / 1_000_000
-    ).toFixed(count < 10_000_000 ? 1 : 0)}M`;
+  if (count < 1000000000) {
+    return `${(count / 1000000).toFixed(
+      count < 10000000 ? 1 : 0
+    )}M`;
   }
 
-  return `${(count / 1_000_000_000).toFixed(1)}B`;
-}
-
-function flattenComments(comments = []) {
-  const byParent = new Map();
-
-  for (const item of comments) {
-    const rawParentId = item?.parentId;
-
-    const parentId =
-      rawParentId && typeof rawParentId === "object"
-        ? rawParentId._id
-        : rawParentId;
-
-    const key = String(parentId || "root");
-
-    if (!byParent.has(key)) {
-      byParent.set(key, []);
-    }
-
-    byParent.get(key).push(item);
-  }
-
-  const visit = (
-    parentId,
-    depth = 0,
-    path = new Set()
-  ) => {
-    const result = [];
-
-    const children =
-      byParent.get(String(parentId || "root")) || [];
-
-    for (const item of children) {
-      const id = String(item?._id || "");
-
-      if (!id || path.has(id)) {
-        continue;
-      }
-
-      const nextPath = new Set(path);
-      nextPath.add(id);
-
-      result.push({
-        comment: item,
-        depth,
-      });
-
-      result.push(
-        ...visit(id, depth + 1, nextPath)
-      );
-    }
-
-    return result;
-  };
-
-  return visit("root");
+  return `${(count / 1000000000).toFixed(1)}B`;
 }
 
 function getUserName(user) {
@@ -138,6 +91,78 @@ function getUserName(user) {
   );
 }
 
+function getId(value) {
+  if (value && typeof value === "object") {
+    return String(value._id || value.id || "");
+  }
+
+  return String(value || "");
+}
+
+function flattenComments(comments = []) {
+  if (!Array.isArray(comments)) return [];
+
+  const byParent = new Map();
+
+  for (const item of comments) {
+    if (!item?._id) continue;
+
+    const parentId = getId(item.parentId);
+    const key = parentId || "root";
+
+    if (!byParent.has(key)) {
+      byParent.set(key, []);
+    }
+
+    byParent.get(key).push(item);
+  }
+
+  const result = [];
+  const visited = new Set();
+
+  const stack = (byParent.get("root") || [])
+    .slice()
+    .reverse()
+    .map((comment) => ({
+      comment,
+      depth: 0,
+    }));
+
+  while (stack.length) {
+    const current = stack.pop();
+    const id = getId(current.comment._id);
+
+    if (!id || visited.has(id)) continue;
+
+    visited.add(id);
+
+    result.push(current);
+
+    const children = byParent.get(id) || [];
+
+    for (let i = children.length - 1; i >= 0; i--) {
+      stack.push({
+        comment: children[i],
+        depth: current.depth + 1,
+      });
+    }
+  }
+
+  return result;
+}
+
+async function readResponse(response) {
+  try {
+    return await response.json();
+  } catch {
+    return {};
+  }
+}
+
+/* =========================================================
+   STORY MODAL
+========================================================= */
+
 export default function StoryModal({
   storyGroup,
   initialIndex = 0,
@@ -146,39 +171,58 @@ export default function StoryModal({
 }) {
   const router = useRouter();
 
+  /* ---------------------------------------------------------
+     STORY DATA
+  --------------------------------------------------------- */
+
   const stories = useMemo(
     () =>
       Array.isArray(storyGroup?.stories)
         ? storyGroup.stories
         : [],
-    [storyGroup]
+    [storyGroup?.stories]
   );
 
-  const safeInitialIndex = useMemo(() => {
-    if (!stories.length) {
-      return 0;
-    }
+  const safeInitialIndex = stories.length
+    ? Math.min(
+        Math.max(Number(initialIndex) || 0, 0),
+        stories.length - 1
+      )
+    : 0;
 
-    return Math.min(
-      Math.max(Number(initialIndex) || 0, 0),
-      stories.length - 1
-    );
-  }, [initialIndex, stories.length]);
+  const groupKey = useMemo(
+    () =>
+      String(
+        storyGroup?._id ||
+          getId(storyGroup?.userId) ||
+          stories.map((item) => item?._id).join(",")
+      ),
+    [storyGroup?._id, storyGroup?.userId, stories]
+  );
 
   const [storyIndex, setStoryIndex] = useState(
     safeInitialIndex
   );
 
-  const [remainingMs, setRemainingMs] = useState(() =>
-    getDurationMs(stories[safeInitialIndex])
+  const story = stories[storyIndex];
+
+  const storyId = story?._id || null;
+
+  const username = getUserName(story?.userId);
+
+  const duration = getDurationMs(story);
+
+  /* ---------------------------------------------------------
+     STATE
+  --------------------------------------------------------- */
+
+  const [remainingMs, setRemainingMs] = useState(
+    () => getDurationMs(stories[safeInitialIndex])
   );
-  const remainingMsRef = useRef(remainingMs);
-  remainingMsRef.current = remainingMs;
 
   const [flipped, setFlipped] = useState(false);
 
-  const [detailTab, setDetailTab] =
-    useState("comments");
+  const [detailTab, setDetailTab] = useState("comments");
 
   const [comments, setComments] = useState([]);
 
@@ -186,40 +230,48 @@ export default function StoryModal({
 
   const [reply, setReply] = useState(null);
 
-  const [commentBusy, setCommentBusy] =
-    useState(false);
+  const [commentBusy, setCommentBusy] = useState(false);
 
-  const [mentionQuery, setMentionQuery] =
-    useState("");
+  const [mentionQuery, setMentionQuery] = useState("");
 
-  const [mentionResults, setMentionResults] =
-    useState([]);
+  const [mentionResults, setMentionResults] = useState([]);
 
-  const [shareQuery, setShareQuery] =
-    useState("");
+  const [shareQuery, setShareQuery] = useState("");
 
-  const [shareUsers, setShareUsers] =
-    useState([]);
+  const [shareUsers, setShareUsers] = useState([]);
 
   const [shareBusy, setShareBusy] = useState("");
 
-  const [socialMessage, setSocialMessage] =
-    useState("");
+  const [socialMessage, setSocialMessage] = useState("");
 
-  const [shareError, setShareError] =
-    useState("");
+  const [shareError, setShareError] = useState("");
 
-  const [likeBurst, setLikeBurst] =
-    useState(false);
+  const [likeBurst, setLikeBurst] = useState(false);
 
-  const [rewardNotice, setRewardNotice] =
-    useState(null);
+  const [rewardNotice, setRewardNotice] = useState(null);
 
-  const [mediaError, setMediaError] =
-    useState(false);
+  const [mediaError, setMediaError] = useState(false);
 
   const [mediaFallbackTried, setMediaFallbackTried] =
     useState(false);
+
+  const [mediaSrc, setMediaSrc] = useState("");
+
+  /* ---------------------------------------------------------
+     REFS
+  --------------------------------------------------------- */
+
+  const modalRef = useRef(null);
+
+  const closeButtonRef = useRef(null);
+
+  const videoRef = useRef(null);
+
+  const remainingMsRef = useRef(remainingMs);
+
+  const activeStoryIdRef = useRef(storyId);
+
+  const onStoryUpdateRef = useRef(onStoryUpdate);
 
   const tapTimerRef = useRef(null);
 
@@ -235,121 +287,121 @@ export default function StoryModal({
 
   const swipeHandledRef = useRef(false);
 
-  const videoRef = useRef(null);
+  const advanceLockRef = useRef(false);
 
-  const story = stories[storyIndex];
+  const previousFocusRef = useRef(null);
 
-  // Stream media through Zenigram rather than relying on expiring S3 URLs.
-  const storyMediaUrl = story?._id
-    ? `/api/story-globe/story-media?storyId=${encodeURIComponent(story._id)}`
+  remainingMsRef.current = remainingMs;
+
+  activeStoryIdRef.current = storyId;
+
+  onStoryUpdateRef.current = onStoryUpdate;
+
+  /* ---------------------------------------------------------
+     MEDIA URL
+  --------------------------------------------------------- */
+
+  const storyMediaUrl = storyId
+    ? `/api/story-globe/story-media?storyId=${encodeURIComponent(
+        storyId
+      )}`
     : story?.mediaUrl || "";
 
-  const handleMediaError = useCallback((event) => {
-    const fallbackUrl = story?.mediaUrl;
-    const element = event.currentTarget;
-
-    // Prefer the same-origin stream route, but fall back to the existing
-    // signed URL when an older story uses a media key the proxy cannot resolve.
-    if (
-      !mediaFallbackTried &&
-      fallbackUrl &&
-      element.src !== fallbackUrl
-    ) {
-      setMediaFallbackTried(true);
-      element.src = fallbackUrl;
-      if (element instanceof HTMLVideoElement) element.load();
-      return;
-    }
-
-    setMediaError(true);
-  }, [mediaFallbackTried, story?.mediaUrl]);
-
-  const username = getUserName(story?.userId);
-
-  const duration = getDurationMs(story);
-
-  const progress =
-    duration > 0
-      ? Math.min(
-          100,
-          Math.max(
-            0,
-            ((duration - remainingMs) /
-              duration) *
-              100
-          )
-        )
-      : 0;
+  /* ---------------------------------------------------------
+     TIMER CLEANUP
+  --------------------------------------------------------- */
 
   const clearTapTimer = useCallback(() => {
-    if (!tapTimerRef.current) {
-      return;
+    if (tapTimerRef.current !== null) {
+      window.clearTimeout(tapTimerRef.current);
+      tapTimerRef.current = null;
     }
-
-    window.clearTimeout(tapTimerRef.current);
-
-    tapTimerRef.current = null;
   }, []);
 
-  const showRewardNotice = useCallback(
-    (notice) => {
-      if (rewardTimerRef.current) {
-        window.clearTimeout(
-          rewardTimerRef.current
-        );
-      }
+  const stopStoryTimer = useCallback(() => {
+    if (timerAnimationRef.current !== null) {
+      window.cancelAnimationFrame(
+        timerAnimationRef.current
+      );
 
-      setRewardNotice(notice);
+      timerAnimationRef.current = null;
+    }
 
-      rewardTimerRef.current =
-        window.setTimeout(() => {
-          setRewardNotice(null);
-          rewardTimerRef.current = null;
-        }, 3200);
-    },
-    []
-  );
+    timerStartedAtRef.current = null;
+  }, []);
 
-  const resetStoryState = useCallback(
-    (nextStory) => {
-      const nextDuration =
-        getDurationMs(nextStory);
+  /* ---------------------------------------------------------
+     REWARD NOTIFICATION
+  --------------------------------------------------------- */
 
-      setRemainingMs(nextDuration);
+  const showRewardNotice = useCallback((notice) => {
+    if (rewardTimerRef.current !== null) {
+      window.clearTimeout(rewardTimerRef.current);
+    }
 
-      setFlipped(false);
+    setRewardNotice(notice);
 
-      setDetailTab("comments");
+    rewardTimerRef.current = window.setTimeout(() => {
+      setRewardNotice(null);
+      rewardTimerRef.current = null;
+    }, 3200);
+  }, []);
 
-      setComments([]);
+  /* ---------------------------------------------------------
+     STORY RESET
+  --------------------------------------------------------- */
 
-      setComment("");
+  const resetStoryState = useCallback((nextStory) => {
+    const nextDuration = getDurationMs(nextStory);
 
-      setReply(null);
+    setRemainingMs(nextDuration);
 
-      setMentionQuery("");
+    remainingMsRef.current = nextDuration;
 
-      setMentionResults([]);
+    setFlipped(false);
 
-      setShareQuery("");
+    setDetailTab("comments");
 
-      setShareUsers([]);
+    setComments([]);
 
-      setShareBusy("");
+    setComment("");
 
-      setSocialMessage("");
+    setReply(null);
 
-      setShareError("");
+    setCommentBusy(false);
 
-      setLikeBurst(false);
+    setMentionQuery("");
 
-      setMediaError(false);
-      setMediaFallbackTried(false);
+    setMentionResults([]);
 
-      timerStartedAtRef.current = null;
-    },
-    []
-  );
+    setShareQuery("");
+
+    setShareUsers([]);
+
+    setShareBusy("");
+
+    setSocialMessage("");
+
+    setShareError("");
+
+    setLikeBurst(false);
+
+    setRewardNotice(null);
+
+    setMediaError(false);
+
+    setMediaFallbackTried(false);
+
+    setMediaSrc("");
+
+    timerStartedAtRef.current = null;
+
+    advanceLockRef.current = false;
+  }, []);
+
+  /* ---------------------------------------------------------
+     STORY NAVIGATION
+  --------------------------------------------------------- */
 
   const moveToStory = useCallback(
     (nextIndex) => {
@@ -363,205 +415,307 @@ export default function StoryModal({
         return;
       }
 
-      const safeIndex = Math.max(
-        0,
-        nextIndex
-      );
+      const safeIndex = Math.max(0, nextIndex);
 
       clearTapTimer();
 
-      timerStartedAtRef.current = null;
+      stopStoryTimer();
+
+      advanceLockRef.current = false;
 
       setStoryIndex(safeIndex);
 
-      resetStoryState(
-        stories[safeIndex]
-      );
+      resetStoryState(stories[safeIndex]);
     },
     [
-      clearTapTimer,
-      onClose,
-      resetStoryState,
       stories,
+      onClose,
+      clearTapTimer,
+      stopStoryTimer,
+      resetStoryState,
     ]
   );
 
+  const advanceStory = useCallback(() => {
+    if (advanceLockRef.current) return;
+
+    advanceLockRef.current = true;
+
+    moveToStory(storyIndex + 1);
+  }, [moveToStory, storyIndex]);
+
+  const goToPreviousStory = useCallback(() => {
+    if (storyIndex <= 0) return;
+
+    moveToStory(storyIndex - 1);
+  }, [moveToStory, storyIndex]);
+
+  /* ---------------------------------------------------------
+     SYNC STORY GROUP
+  --------------------------------------------------------- */
+
   useEffect(() => {
-    if (!stories.length) {
-      return;
-    }
+    if (!stories.length) return;
 
     setStoryIndex(safeInitialIndex);
 
-    resetStoryState(
-      stories[safeInitialIndex]
-    );
-  }, [
-    resetStoryState,
-    safeInitialIndex,
-    stories,
-  ]);
+    resetStoryState(stories[safeInitialIndex]);
+  }, [groupKey, safeInitialIndex, resetStoryState]);
+
+  /* ---------------------------------------------------------
+     INITIAL MEDIA SOURCE
+  --------------------------------------------------------- */
+
+  useEffect(() => {
+    if (!storyId) return;
+
+    setMediaSrc(storyMediaUrl);
+    setMediaError(false);
+    setMediaFallbackTried(false);
+  }, [storyId, storyMediaUrl]);
+
+  /* ---------------------------------------------------------
+     MEDIA ERROR FALLBACK
+  --------------------------------------------------------- */
+
+  const handleMediaError = useCallback(
+    (event) => {
+      const fallbackUrl = story?.mediaUrl;
+
+      if (
+        !mediaFallbackTried &&
+        fallbackUrl &&
+        mediaSrc !== fallbackUrl
+      ) {
+        setMediaFallbackTried(true);
+        setMediaSrc(fallbackUrl);
+        return;
+      }
+
+      setMediaError(true);
+    },
+    [story?.mediaUrl, mediaFallbackTried, mediaSrc]
+  );
+
+  /* ---------------------------------------------------------
+     VIDEO PLAYBACK
+  --------------------------------------------------------- */
 
   useEffect(() => {
     const video = videoRef.current;
 
-    if (!video) {
-      return;
-    }
+    if (!video) return;
 
-    if (flipped) {
+    if (flipped || document.hidden) {
       video.pause();
       return;
     }
 
-    void video.play().catch(() => {});
-  }, [flipped, story?._id]);
+    const playVideo = async () => {
+      try {
+        await video.play();
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          console.warn(
+            "Story autoplay unavailable:",
+            error
+          );
+        }
+      }
+    };
+
+    void playVideo();
+
+    return () => {
+      video.pause();
+    };
+  }, [flipped, storyId, mediaSrc]);
+
+  /* ---------------------------------------------------------
+     STORY TIMER
+  --------------------------------------------------------- */
 
   useEffect(() => {
-    if (!story?._id || flipped) {
-      timerStartedAtRef.current = null;
-
-      if (timerAnimationRef.current) {
-        window.cancelAnimationFrame(
-          timerAnimationRef.current
-        );
-
-        timerAnimationRef.current = null;
-      }
-
-      return undefined;
+    if (!storyId || flipped) {
+      stopStoryTimer();
+      return;
     }
 
-    const resumeFrom = remainingMsRef.current;
+    let lastTime = null;
+
     const startFrom =
-      resumeFrom > 0
-        ? resumeFrom
+      remainingMsRef.current > 0
+        ? remainingMsRef.current
         : duration;
 
-    timerStartedAtRef.current =
-      performance.now();
+    let currentRemaining = startFrom;
 
     const tick = (now) => {
-      const startedAt =
-        timerStartedAtRef.current;
+      if (document.hidden) {
+        lastTime = null;
 
-      if (startedAt === null) {
+        timerAnimationRef.current =
+          window.requestAnimationFrame(tick);
+
         return;
       }
 
-      const elapsed =
-        now - startedAt;
+      if (lastTime === null) {
+        lastTime = now;
+      }
 
-      const nextRemaining = Math.max(
+      const elapsed = Math.max(0, now - lastTime);
+
+      lastTime = now;
+
+      currentRemaining = Math.max(
         0,
-        startFrom - elapsed
+        currentRemaining - elapsed
       );
 
-      setRemainingMs(nextRemaining);
+      remainingMsRef.current = currentRemaining;
 
-      if (nextRemaining <= 0) {
+      setRemainingMs(currentRemaining);
+
+      if (currentRemaining <= 0) {
         timerAnimationRef.current = null;
 
-        moveToStory(
-          storyIndex + 1
-        );
+        advanceStory();
 
         return;
       }
 
       timerAnimationRef.current =
-        window.requestAnimationFrame(
-          tick
-        );
+        window.requestAnimationFrame(tick);
     };
 
     timerAnimationRef.current =
       window.requestAnimationFrame(tick);
 
     return () => {
-      if (timerAnimationRef.current) {
-        window.cancelAnimationFrame(
-          timerAnimationRef.current
-        );
-
-        timerAnimationRef.current = null;
-      }
+      stopStoryTimer();
     };
   }, [
+    storyId,
     flipped,
-    moveToStory,
-    story?._id,
-    storyIndex,
     duration,
+    advanceStory,
+    stopStoryTimer,
   ]);
 
-  useEffect(() => {
-    if (!story?._id) {
-      return undefined;
+  /* ---------------------------------------------------------
+     VIDEO ENDED
+  --------------------------------------------------------- */
+
+  const handleVideoEnded = useCallback(() => {
+    if (!flipped) {
+      advanceStory();
     }
+  }, [flipped, advanceStory]);
+
+  /* ---------------------------------------------------------
+     VISIBILITY CHANGE
+  --------------------------------------------------------- */
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const video = videoRef.current;
+
+      if (document.hidden) {
+        video?.pause();
+      } else if (!flipped && video) {
+        video.play().catch(() => {});
+      }
+    };
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
+
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+    };
+  }, [flipped, storyId]);
+
+  /* ---------------------------------------------------------
+     LOAD STORY ENGAGEMENT AND COMMENTS
+  --------------------------------------------------------- */
+
+  useEffect(() => {
+    if (!storyId) return;
+
+    const controller = new AbortController();
 
     let cancelled = false;
 
-    const load = async () => {
+    const loadStoryData = async () => {
       try {
-        const [
-          engagementResponse,
-          commentsResponse,
-        ] = await Promise.all([
-          fetch(
-            `/api/stories/${story._id}/engagement`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-              body: JSON.stringify({
-                action: "view",
-              }),
-            }
-          ),
+        const [engagementResponse, commentsResponse] =
+          await Promise.all([
+            fetch(
+              `/api/stories/${storyId}/engagement`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  action: "view",
+                }),
+                signal: controller.signal,
+              }
+            ),
 
-          fetch(
-            `/api/stories/${story._id}/comments`,
-            {
-              cache: "no-store",
-            }
-          ),
-        ]);
+            fetch(
+              `/api/stories/${storyId}/comments`,
+              {
+                cache: "no-store",
+                signal: controller.signal,
+              }
+            ),
+          ]);
 
-        if (cancelled) {
+        if (
+          cancelled ||
+          activeStoryIdRef.current !== storyId
+        ) {
           return;
         }
 
         if (engagementResponse.ok) {
-          const data =
-            await engagementResponse.json();
+          const data = await readResponse(
+            engagementResponse
+          );
 
-          onStoryUpdate?.(
-            story._id,
+          if (
+            cancelled ||
+            activeStoryIdRef.current !== storyId
+          ) {
+            return;
+          }
+
+          onStoryUpdateRef.current?.(
+            storyId,
             data
           );
 
           if (data.lastHoursReward) {
             showRewardNotice({
               type: "reward",
-              title:
-                "Last Hours collected",
-              points:
-                data.lastHoursReward
-                  .points,
+              title: "Last Hours collected",
+              points: data.lastHoursReward.points,
             });
           } else if (
-            data.newlyAwardedAchievements
-              ?.length
+            data.newlyAwardedAchievements?.length
           ) {
             showRewardNotice({
               type: "achievement",
               title:
-                data
-                  .newlyAwardedAchievements[0]
-                  .title,
+                data.newlyAwardedAchievements[0].title,
               description:
                 "Exploration achievement unlocked",
             });
@@ -569,19 +723,28 @@ export default function StoryModal({
         }
 
         if (commentsResponse.ok) {
-          const data =
-            await commentsResponse.json();
+          const data = await readResponse(
+            commentsResponse
+          );
+
+          if (
+            cancelled ||
+            activeStoryIdRef.current !== storyId
+          ) {
+            return;
+          }
 
           setComments(
-            Array.isArray(
-              data.comments
-            )
+            Array.isArray(data.comments)
               ? data.comments
               : []
           );
         }
       } catch (error) {
-        if (!cancelled) {
+        if (
+          error?.name !== "AbortError" &&
+          !cancelled
+        ) {
           console.error(
             "Unable to load story interactions:",
             error
@@ -590,208 +753,217 @@ export default function StoryModal({
       }
     };
 
-    void load();
+    void loadStoryData();
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [
-    onStoryUpdate,
-    showRewardNotice,
-    story?._id,
-  ]);
+  }, [storyId, showRewardNotice]);
+
+  /* ---------------------------------------------------------
+     USER MENTION SEARCH
+  --------------------------------------------------------- */
 
   useEffect(() => {
-    const query =
-      mentionQuery.trim();
+    const query = mentionQuery.trim();
 
     if (query.length < 2) {
       setMentionResults([]);
-      return undefined;
+      return;
     }
 
-    const controller =
-      new AbortController();
+    const controller = new AbortController();
 
-    const timeout =
-      window.setTimeout(
-        async () => {
-          try {
-            const response =
-              await fetch(
-                `/api/search/users?q=${encodeURIComponent(
-                  query
-                )}`,
-                {
-                  signal:
-                    controller.signal,
-                  cache: "no-store",
-                }
-              );
-
-            if (!response.ok) {
-              setMentionResults([]);
-              return;
-            }
-
-            const data =
-              await response.json();
-
-            setMentionResults(
-              Array.isArray(data.users)
-                ? data.users.slice(
-                    0,
-                    5
-                  )
-                : []
-            );
-          } catch (error) {
-            if (
-              error?.name !==
-              "AbortError"
-            ) {
-              setMentionResults(
-                []
-              );
-            }
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `/api/search/users?q=${encodeURIComponent(query)}`,
+          {
+            signal: controller.signal,
+            cache: "no-store",
           }
-        },
-        220
-      );
+        );
+
+        if (!response.ok) {
+          setMentionResults([]);
+          return;
+        }
+
+        const data = await readResponse(response);
+
+        if (!controller.signal.aborted) {
+          setMentionResults(
+            Array.isArray(data.users)
+              ? data.users.slice(0, 5)
+              : []
+          );
+        }
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          setMentionResults([]);
+        }
+      }
+    }, 250);
 
     return () => {
-      window.clearTimeout(
-        timeout
-      );
-
+      window.clearTimeout(timeout);
       controller.abort();
     };
   }, [mentionQuery]);
 
+  /* ---------------------------------------------------------
+     SHARE USER SEARCH
+  --------------------------------------------------------- */
+
   useEffect(() => {
-    const query =
-      shareQuery.trim();
+    const query = shareQuery.trim();
 
     if (query.length < 2) {
       setShareUsers([]);
-      return undefined;
+      return;
     }
 
-    const controller =
-      new AbortController();
+    const controller = new AbortController();
 
-    const timeout =
-      window.setTimeout(
-        async () => {
-          try {
-            const response =
-              await fetch(
-                `/api/search/users?q=${encodeURIComponent(
-                  query
-                )}`,
-                {
-                  signal:
-                    controller.signal,
-                  cache: "no-store",
-                }
-              );
-
-            if (!response.ok) {
-              setShareUsers([]);
-              return;
-            }
-
-            const data =
-              await response.json();
-
-            setShareUsers(
-              Array.isArray(data.users)
-                ? data.users.slice(
-                    0,
-                    8
-                  )
-                : []
-            );
-          } catch (error) {
-            if (
-              error?.name !==
-              "AbortError"
-            ) {
-              setShareUsers([]);
-            }
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `/api/search/users?q=${encodeURIComponent(query)}`,
+          {
+            signal: controller.signal,
+            cache: "no-store",
           }
-        },
-        220
-      );
+        );
+
+        if (!response.ok) {
+          setShareUsers([]);
+          return;
+        }
+
+        const data = await readResponse(response);
+
+        if (!controller.signal.aborted) {
+          setShareUsers(
+            Array.isArray(data.users)
+              ? data.users.slice(0, 8)
+              : []
+          );
+        }
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          setShareUsers([]);
+        }
+      }
+    }, 250);
 
     return () => {
-      window.clearTimeout(
-        timeout
-      );
-
+      window.clearTimeout(timeout);
       controller.abort();
     };
   }, [shareQuery]);
 
+  /* ---------------------------------------------------------
+     MODAL FOCUS AND BODY SCROLL
+  --------------------------------------------------------- */
+
   useEffect(() => {
-    if (
-      typeof document ===
-      "undefined"
-    ) {
-      return undefined;
-    }
+    previousFocusRef.current =
+      document.activeElement;
 
     const previousOverflow =
-      document.body.style
-        .overflow;
+      document.body.style.overflow;
 
-    document.body.style.overflow =
-      "hidden";
+    document.body.style.overflow = "hidden";
+
+    modalRef.current?.focus();
 
     return () => {
       document.body.style.overflow =
         previousOverflow;
+
+      if (
+        previousFocusRef.current &&
+        typeof previousFocusRef.current.focus === "function"
+      ) {
+        previousFocusRef.current.focus();
+      }
     };
   }, []);
 
+  /* ---------------------------------------------------------
+     KEYBOARD NAVIGATION AND FOCUS TRAP
+  --------------------------------------------------------- */
+
   useEffect(() => {
-    const handleKeyDown = (
-      event
-    ) => {
+    const handleKeyDown = (event) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         onClose?.();
         return;
       }
 
-      if (flipped) {
+      if (event.key === "Tab") {
+        const modal = modalRef.current;
+
+        if (!modal) return;
+
+        const focusable = Array.from(
+          modal.querySelectorAll(
+            'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter(
+          (element) =>
+            element.offsetWidth > 0 ||
+            element.offsetHeight > 0
+        );
+
+        if (!focusable.length) {
+          event.preventDefault();
+          modal.focus();
+          return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (
+          event.shiftKey &&
+          document.activeElement === first
+        ) {
+          event.preventDefault();
+          last.focus();
+        } else if (
+          !event.shiftKey &&
+          document.activeElement === last
+        ) {
+          event.preventDefault();
+          first.focus();
+        }
+
         return;
       }
 
       if (
-        event.key === "ArrowRight"
+        flipped ||
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement
       ) {
-        event.preventDefault();
-
-        moveToStory(
-          storyIndex + 1
-        );
+        return;
       }
 
-      if (
-        event.key === "ArrowLeft"
-      ) {
+      if (event.key === "ArrowRight") {
         event.preventDefault();
+        moveToStory(storyIndex + 1);
+      }
 
-        moveToStory(
-          storyIndex - 1
-        );
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        moveToStory(storyIndex - 1);
       }
     };
 
-    window.addEventListener(
-      "keydown",
-      handleKeyDown
-    );
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       window.removeEventListener(
@@ -799,825 +971,804 @@ export default function StoryModal({
         handleKeyDown
       );
     };
-  }, [
-    flipped,
-    moveToStory,
-    onClose,
-    storyIndex,
-  ]);
+  }, [flipped, onClose, moveToStory, storyIndex]);
+
+  /* ---------------------------------------------------------
+     FINAL CLEANUP
+  --------------------------------------------------------- */
 
   useEffect(() => {
     return () => {
       clearTapTimer();
+      stopStoryTimer();
 
-      if (likeTimerRef.current) {
-        window.clearTimeout(
-          likeTimerRef.current
-        );
+      if (likeTimerRef.current !== null) {
+        window.clearTimeout(likeTimerRef.current);
       }
 
-      if (rewardTimerRef.current) {
-        window.clearTimeout(
-          rewardTimerRef.current
-        );
-      }
-
-      if (timerAnimationRef.current) {
-        window.cancelAnimationFrame(
-          timerAnimationRef.current
-        );
+      if (rewardTimerRef.current !== null) {
+        window.clearTimeout(rewardTimerRef.current);
       }
     };
-  }, [clearTapTimer]);
+  }, [clearTapTimer, stopStoryTimer]);
 
-  const likeStory = useCallback(
-    async () => {
-      if (!story?._id) {
+  /* ---------------------------------------------------------
+     STORY PROGRESS
+  --------------------------------------------------------- */
+
+  const progress =
+    duration > 0
+      ? Math.min(
+          100,
+          Math.max(
+            0,
+            ((duration - remainingMs) / duration) * 100
+          )
+        )
+      : 0;
+
+  /* ---------------------------------------------------------
+     LIKE STORY
+  --------------------------------------------------------- */
+
+  const likeStory = useCallback(async () => {
+    if (!storyId) return;
+
+    const currentStoryId = storyId;
+
+    setLikeBurst(true);
+    setSocialMessage("");
+
+    if (likeTimerRef.current !== null) {
+      window.clearTimeout(likeTimerRef.current);
+    }
+
+    likeTimerRef.current = window.setTimeout(() => {
+      setLikeBurst(false);
+      likeTimerRef.current = null;
+    }, 850);
+
+    try {
+      const response = await fetch(
+        `/api/stories/${currentStoryId}/engagement`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: "like",
+          }),
+        }
+      );
+
+      const data = await readResponse(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            data.message ||
+            "Unable to update story like"
+        );
+      }
+
+      if (
+        activeStoryIdRef.current !== currentStoryId
+      ) {
         return;
       }
 
-      setLikeBurst(true);
-
-      if (likeTimerRef.current) {
-        window.clearTimeout(
-          likeTimerRef.current
-        );
-      }
-
-      likeTimerRef.current =
-        window.setTimeout(
-          () =>
-            setLikeBurst(false),
-          850
-        );
-
-      try {
-        const response =
-          await fetch(
-            `/api/stories/${story._id}/engagement`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-              body: JSON.stringify({
-                action: "like",
-              }),
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.error ||
-              data.message ||
-              "Unable to update story like"
-          );
-        }
-
-        onStoryUpdate?.(
-          story._id,
-          data
-        );
-      } catch (error) {
+      onStoryUpdateRef.current?.(
+        currentStoryId,
+        data
+      );
+    } catch (error) {
+      if (
+        activeStoryIdRef.current === currentStoryId
+      ) {
         setSocialMessage(
           error?.message ||
             "Unable to update story like"
         );
       }
+    }
+  }, [storyId]);
+
+  /* ---------------------------------------------------------
+     STORY TAP / DOUBLE TAP
+  --------------------------------------------------------- */
+
+  const handleStoryTap = useCallback(() => {
+    if (flipped || !storyId) return;
+
+    if (swipeHandledRef.current) {
+      swipeHandledRef.current = false;
+      return;
+    }
+
+    if (tapTimerRef.current !== null) {
+      clearTapTimer();
+      void likeStory();
+      return;
+    }
+
+    tapTimerRef.current = window.setTimeout(() => {
+      tapTimerRef.current = null;
+      advanceStory();
+    }, 240);
+  }, [
+    flipped,
+    storyId,
+    clearTapTimer,
+    likeStory,
+    advanceStory,
+  ]);
+
+  const handleStoryKeyDown = useCallback(
+    (event) => {
+      if (
+        event.key === "Enter" ||
+        event.key === " "
+      ) {
+        event.preventDefault();
+        handleStoryTap();
+      }
     },
-    [
-      onStoryUpdate,
-      story?._id,
-    ]
+    [handleStoryTap]
   );
 
-  const handleStoryTap =
-    useCallback(() => {
+  /* ---------------------------------------------------------
+     FLIP TO DETAILS
+  --------------------------------------------------------- */
+
+  const flipToDetails = useCallback(
+    (event) => {
+      event?.stopPropagation();
+
+      clearTapTimer();
+
+      setFlipped(true);
+    },
+    [clearTapTimer]
+  );
+
+  /* ---------------------------------------------------------
+     RETURN TO STORY
+  --------------------------------------------------------- */
+
+  const returnToStory = useCallback(
+    (event) => {
+      event?.stopPropagation();
+
+      setFlipped(false);
+    },
+    []
+  );
+
+  /* ---------------------------------------------------------
+     SWIPE NAVIGATION
+  --------------------------------------------------------- */
+
+  const handlePointerDown = useCallback((event) => {
+    if (event.pointerType === "mouse") return;
+
+    touchStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+  }, []);
+
+  const handlePointerUp = useCallback(
+    (event) => {
+      const start = touchStartRef.current;
+
+      touchStartRef.current = null;
+
+      if (!start || flipped) return;
+
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+
       if (
-        flipped ||
-        !story?._id
+        Math.abs(dx) < 55 ||
+        Math.abs(dx) < Math.abs(dy)
       ) {
         return;
       }
 
-      if (swipeHandledRef.current) {
-        swipeHandledRef.current =
-          false;
+      clearTapTimer();
 
-        return;
+      swipeHandledRef.current = true;
+
+      if (dx < 0) {
+        moveToStory(storyIndex + 1);
+      } else {
+        moveToStory(storyIndex - 1);
       }
-
-      if (tapTimerRef.current) {
-        window.clearTimeout(
-          tapTimerRef.current
-        );
-
-        tapTimerRef.current =
-          null;
-
-        void likeStory();
-
-        return;
-      }
-
-      tapTimerRef.current =
-        window.setTimeout(() => {
-          tapTimerRef.current =
-            null;
-
-          moveToStory(
-            storyIndex + 1
-          );
-        }, 240);
-    }, [
+    },
+    [
       flipped,
-      likeStory,
+      clearTapTimer,
       moveToStory,
-      story?._id,
       storyIndex,
-    ]);
+    ]
+  );
 
-  const handleStoryKeyDown =
-    useCallback(
-      (event) => {
-        if (
-          event.key === "Enter" ||
-          event.key === " " ||
-          event.key === "ArrowRight"
-        ) {
-          event.preventDefault();
+  /* ---------------------------------------------------------
+     COMMENT TEXT AND MENTIONS
+  --------------------------------------------------------- */
 
-          handleStoryTap();
-        }
-      },
-      [handleStoryTap]
+  const updateCommentText = useCallback((value) => {
+    setComment(value);
+
+    const match = value.match(
+      /(?:^|\s)@([a-zA-Z0-9_.]*)$/
     );
 
-  const flipToDetails =
-    useCallback(
-      (event) => {
-        event.stopPropagation();
+    setMentionQuery(match?.[1] || "");
+  }, []);
 
-        clearTapTimer();
-
-        setFlipped(true);
-
-        timerStartedAtRef.current =
-          null;
-      },
-      [clearTapTimer]
+  const selectMention = useCallback((name) => {
+    setComment((current) =>
+      current.replace(
+        /@([a-zA-Z0-9_.]*)$/,
+        `@${name} `
+      )
     );
 
-  const returnToStory =
-    useCallback(
-      (event) => {
-        event.stopPropagation();
+    setMentionQuery("");
+    setMentionResults([]);
+  }, []);
 
-        setFlipped(false);
+  /* ---------------------------------------------------------
+     SUBMIT COMMENT
+  --------------------------------------------------------- */
 
-        setRemainingMs(duration);
+  const submitComment = useCallback(
+    async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
 
-        timerStartedAtRef.current =
-          null;
-      },
-      [duration]
-    );
+      if (commentBusy || !storyId) return;
 
-  const handlePointerDown =
-    useCallback((event) => {
-      touchStartRef.current = {
-        x: event.clientX,
-        y: event.clientY,
-      };
-    }, []);
+      const text = comment.trim();
 
-  const handlePointerUp =
-    useCallback(
-      (event) => {
-        const start =
-          touchStartRef.current;
+      if (!text) return;
 
-        touchStartRef.current =
-          null;
+      const currentStoryId = storyId;
 
-        if (!start || flipped) {
-          return;
-        }
-
-        const dx =
-          event.clientX -
-          start.x;
-
-        const dy =
-          event.clientY -
-          start.y;
-
-        if (
-          Math.abs(dx) < 55 ||
-          Math.abs(dx) <
-            Math.abs(dy)
-        ) {
-          return;
-        }
-
-        clearTapTimer();
-
-        swipeHandledRef.current =
-          true;
-
-        if (dx < 0) {
-          moveToStory(
-            storyIndex + 1
-          );
-        } else {
-          moveToStory(
-            storyIndex - 1
-          );
-        }
-      },
-      [
-        clearTapTimer,
-        flipped,
-        moveToStory,
-        storyIndex,
-      ]
-    );
-
-  const updateCommentText =
-    useCallback((value) => {
-      setComment(value);
-
-      const match =
-        value.match(
-          /(?:^|\s)@([a-zA-Z0-9_.]*)$/
-        );
-
-      setMentionQuery(
-        match?.[1] || ""
-      );
-    }, []);
-
-  const selectMention =
-    useCallback((name) => {
-      setComment((current) =>
-        current.replace(
-          /@([a-zA-Z0-9_.]*)$/,
-          `@${name} `
-        )
-      );
-
-      setMentionQuery("");
-
-      setMentionResults([]);
-    }, []);
-
-  const submitComment =
-    useCallback(
-      async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (
-          commentBusy ||
-          !story?._id
-        ) {
-          return;
-        }
-
-        const text =
-          comment.trim();
-
-        if (!text) {
-          return;
-        }
-
-        setCommentBusy(true);
-
-        setSocialMessage("");
-
-        try {
-          const response =
-            await fetch(
-              `/api/stories/${story._id}/comments`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-                body: JSON.stringify(
-                  {
-                    text,
-                    parentId:
-                      reply?._id ||
-                      null,
-                  }
-                ),
-              }
-            );
-
-          const data =
-            await response.json();
-
-          if (!response.ok) {
-            throw new Error(
-              data.error ||
-                data.message ||
-                "Unable to add comment"
-            );
-          }
-
-          if (data.comment) {
-            setComments(
-              (current) => [
-                ...current,
-                data.comment,
-              ]
-            );
-          }
-
-          setComment("");
-
-          setReply(null);
-
-          setMentionQuery("");
-
-          setMentionResults([]);
-
-          setSocialMessage(
-            "Comment posted"
-          );
-
-          onStoryUpdate?.(
-            story._id,
-            {
-              commentsCount:
-                data.commentsCount ??
-                Number(
-                  story.commentsCount ||
-                    0
-                ) + 1,
-            }
-          );
-        } catch (error) {
-          setSocialMessage(
-            error?.message ||
-              "Unable to add comment"
-          );
-        } finally {
-          setCommentBusy(false);
-        }
-      },
-      [
-        comment,
-        commentBusy,
-        onStoryUpdate,
-        reply?._id,
-        story?._id,
-        story?.commentsCount,
-      ]
-    );
-
-  const likeComment =
-    useCallback(
-      async (item) => {
-        if (
-          !story?._id ||
-          !item?._id
-        ) {
-          return;
-        }
-
-        try {
-          const response =
-            await fetch(
-              `/api/stories/${story._id}/comments`,
-              {
-                method: "PATCH",
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-                body: JSON.stringify(
-                  {
-                    action: "like",
-                    commentId:
-                      item._id,
-                  }
-                ),
-              }
-            );
-
-          const data =
-            await response.json();
-
-          if (!response.ok) {
-            throw new Error(
-              data.error ||
-                "Unable to like comment"
-            );
-          }
-
-          if (data.comment) {
-            setComments(
-              (current) =>
-                current.map(
-                  (entry) =>
-                    entry._id ===
-                    item._id
-                      ? {
-                          ...entry,
-                          ...data.comment,
-                        }
-                      : entry
-                )
-            );
-          }
-        } catch (error) {
-          setSocialMessage(
-            error?.message ||
-              "Unable to like comment"
-          );
-        }
-      },
-      [story?._id]
-    );
-
-  const openReply =
-    useCallback((item) => {
-      const replyUser =
-        getUserName(item?.user);
-
-      setReply(item);
-
-      setComment(
-        `@${replyUser} `
-      );
-
-      setDetailTab("comments");
-    }, []);
-
-  const createStoryShareUrl =
-    useCallback(
-      () =>
-        `${window.location.origin}/stories-globe?story=${encodeURIComponent(
-          story?._id || ""
-        )}`,
-      [story?._id]
-    );
-
-  const shareToUser =
-    useCallback(
-      async (recipient) => {
-        if (
-          !story?._id ||
-          !recipient?._id ||
-          shareBusy
-        ) {
-          return;
-        }
-
-        setShareBusy(
-          recipient._id
-        );
-
-        setShareError("");
-
-        setSocialMessage("");
-
-        try {
-          const conversationResponse =
-            await fetch(
-              "/api/conversations",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-                body: JSON.stringify(
-                  {
-                    recipientId:
-                      recipient._id,
-                  }
-                ),
-              }
-            );
-
-          const conversationData =
-            await conversationResponse.json();
-
-          if (
-            !conversationResponse.ok ||
-            !conversationData
-              .conversation?._id
-          ) {
-            throw new Error(
-              conversationData.error ||
-                conversationData.message ||
-                "Unable to open conversation"
-            );
-          }
-
-          const shareUrl =
-            createStoryShareUrl();
-
-          const messageResponse =
-            await fetch(
-              `/api/conversations/${conversationData.conversation._id}/messages`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-                body: JSON.stringify(
-                  {
-                    content:
-                      shareUrl,
-                  }
-                ),
-              }
-            );
-
-          const messageData =
-            await messageResponse.json();
-
-          if (
-            !messageResponse.ok
-          ) {
-            throw new Error(
-              messageData.error ||
-                messageData.message ||
-                "Unable to send story"
-            );
-          }
-
-          setShareQuery("");
-
-          setShareUsers([]);
-
-          setSocialMessage(
-            `Story sent to @${recipient.username}`
-          );
-
-          onStoryUpdate?.(
-            story._id,
-            {
-              sharesCount:
-                Number(
-                  story.sharesCount ||
-                    story.shares ||
-                    0
-                ) + 1,
-            }
-          );
-        } catch (error) {
-          setShareError(
-            error?.message ||
-              "Unable to share story"
-          );
-        } finally {
-          setShareBusy("");
-        }
-      },
-      [
-        createStoryShareUrl,
-        onStoryUpdate,
-        shareBusy,
-        story?._id,
-        story?.shares,
-        story?.sharesCount,
-      ]
-    );
-
-  const nativeShare =
-    useCallback(async () => {
-      if (!story?._id) {
-        return;
-      }
-
-      const shareUrl =
-        createStoryShareUrl();
+      setCommentBusy(true);
+      setSocialMessage("");
 
       try {
-        if (navigator.share) {
-          await navigator.share({
-            title: `Zenigram story by @${username}`,
-            text: `View @${username}'s story on Zenigram`,
-            url: shareUrl,
-          });
+        const response = await fetch(
+          `/api/stories/${currentStoryId}/comments`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              text,
+              parentId: reply?._id || null,
+            }),
+          }
+        );
 
-          onStoryUpdate?.(
-            story._id,
-            {
-              sharesCount:
-                Number(
-                  story.sharesCount ||
-                    story.shares ||
-                    0
-                ) + 1,
-            }
+        const data = await readResponse(response);
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+              data.message ||
+              "Unable to add comment"
           );
-
-          return;
         }
 
         if (
-          navigator.clipboard
-            ?.writeText
+          activeStoryIdRef.current !== currentStoryId
         ) {
-          await navigator.clipboard.writeText(
-            shareUrl
-          );
-
-          setSocialMessage(
-            "Story link copied to clipboard"
-          );
-
-          onStoryUpdate?.(
-            story._id,
-            {
-              sharesCount:
-                Number(
-                  story.sharesCount ||
-                    story.shares ||
-                    0
-                ) + 1,
-            }
-          );
-
           return;
         }
 
-        setSocialMessage(
-          "Sharing is not supported on this device"
+        if (data.comment) {
+          setComments((current) => {
+            const exists = current.some(
+              (item) =>
+                item._id === data.comment._id
+            );
+
+            return exists
+              ? current
+              : [...current, data.comment];
+          });
+        }
+
+        setComment("");
+        setReply(null);
+        setMentionQuery("");
+        setMentionResults([]);
+
+        setSocialMessage("Comment posted");
+
+        onStoryUpdateRef.current?.(
+          currentStoryId,
+          {
+            commentsCount:
+              data.commentsCount ??
+              Number(story?.commentsCount || 0) + 1,
+          }
         );
       } catch (error) {
         if (
-          error?.name !==
-          "AbortError"
+          activeStoryIdRef.current === currentStoryId
+        ) {
+          setSocialMessage(
+            error?.message || "Unable to add comment"
+          );
+        }
+      } finally {
+        if (
+          activeStoryIdRef.current === currentStoryId
+        ) {
+          setCommentBusy(false);
+        }
+      }
+    },
+    [
+      commentBusy,
+      comment,
+      storyId,
+      reply?._id,
+      story?.commentsCount,
+    ]
+  );
+
+  /* ---------------------------------------------------------
+     LIKE COMMENT
+  --------------------------------------------------------- */
+
+  const likeComment = useCallback(
+    async (item) => {
+      if (!storyId || !item?._id) return;
+
+      const currentStoryId = storyId;
+
+      try {
+        const response = await fetch(
+          `/api/stories/${currentStoryId}/comments`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              action: "like",
+              commentId: item._id,
+            }),
+          }
+        );
+
+        const data = await readResponse(response);
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || "Unable to like comment"
+          );
+        }
+
+        if (
+          activeStoryIdRef.current !== currentStoryId
+        ) {
+          return;
+        }
+
+        if (data.comment) {
+          setComments((current) =>
+            current.map((entry) =>
+              entry._id === item._id
+                ? {
+                    ...entry,
+                    ...data.comment,
+                  }
+                : entry
+            )
+          );
+        }
+      } catch (error) {
+        if (
+          activeStoryIdRef.current === currentStoryId
+        ) {
+          setSocialMessage(
+            error?.message || "Unable to like comment"
+          );
+        }
+      }
+    },
+    [storyId]
+  );
+
+  /* ---------------------------------------------------------
+     OPEN REPLY
+  --------------------------------------------------------- */
+
+  const openReply = useCallback((item) => {
+    const replyUser = getUserName(item?.user);
+
+    setReply(item);
+
+    setComment(`@${replyUser} `);
+
+    setMentionQuery("");
+
+    setMentionResults([]);
+
+    setDetailTab("comments");
+  }, []);
+
+  /* ---------------------------------------------------------
+     STORY SHARE URL
+  --------------------------------------------------------- */
+
+  const createStoryShareUrl = useCallback(() => {
+    if (typeof window === "undefined" || !storyId) {
+      return "";
+    }
+
+    return `${window.location.origin}/stories-globe?story=${encodeURIComponent(
+      storyId
+    )}`;
+  }, [storyId]);
+
+  /* ---------------------------------------------------------
+     SHARE COUNT UPDATE
+  --------------------------------------------------------- */
+
+  const incrementShareCount = useCallback(() => {
+    if (!storyId) return;
+
+    const currentStoryId = storyId;
+
+    onStoryUpdateRef.current?.(currentStoryId, {
+      sharesCount:
+        Number(story?.sharesCount || story?.shares || 0) + 1,
+    });
+  }, [
+    storyId,
+    story?.sharesCount,
+    story?.shares,
+  ]);
+
+  /* ---------------------------------------------------------
+     SHARE TO USER
+  --------------------------------------------------------- */
+
+  const shareToUser = useCallback(
+    async (recipient) => {
+      if (
+        !storyId ||
+        !recipient?._id ||
+        shareBusy
+      ) {
+        return;
+      }
+
+      const currentStoryId = storyId;
+
+      setShareBusy(recipient._id);
+
+      setShareError("");
+
+      setSocialMessage("");
+
+      try {
+        const conversationResponse = await fetch(
+          "/api/conversations",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              recipientId: recipient._id,
+            }),
+          }
+        );
+
+        const conversationData =
+          await readResponse(conversationResponse);
+
+        const conversationId =
+          conversationData.conversation?._id;
+
+        if (
+          !conversationResponse.ok ||
+          !conversationId
+        ) {
+          throw new Error(
+            conversationData.error ||
+              conversationData.message ||
+              "Unable to open conversation"
+          );
+        }
+
+        const shareUrl = createStoryShareUrl();
+
+        const messageResponse = await fetch(
+          `/api/conversations/${encodeURIComponent(
+            conversationId
+          )}/messages`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              content: shareUrl,
+            }),
+          }
+        );
+
+        const messageData = await readResponse(
+          messageResponse
+        );
+
+        if (!messageResponse.ok) {
+          throw new Error(
+            messageData.error ||
+              messageData.message ||
+              "Unable to send story"
+          );
+        }
+
+        if (
+          activeStoryIdRef.current !== currentStoryId
+        ) {
+          return;
+        }
+
+        setShareQuery("");
+        setShareUsers([]);
+
+        setSocialMessage(
+          `Story sent to @${recipient.username || "user"}`
+        );
+
+        incrementShareCount();
+      } catch (error) {
+        if (
+          activeStoryIdRef.current === currentStoryId
+        ) {
+          setShareError(
+            error?.message || "Unable to share story"
+          );
+        }
+      } finally {
+        if (
+          activeStoryIdRef.current === currentStoryId
+        ) {
+          setShareBusy("");
+        }
+      }
+    },
+    [
+      storyId,
+      shareBusy,
+      createStoryShareUrl,
+      incrementShareCount,
+    ]
+  );
+
+  /* ---------------------------------------------------------
+     NATIVE SHARE
+  --------------------------------------------------------- */
+
+  const nativeShare = useCallback(async () => {
+    if (!storyId) return;
+
+    const currentStoryId = storyId;
+    const shareUrl = createStoryShareUrl();
+
+    if (!shareUrl) return;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `Zenigram story by @${username}`,
+          text: `View @${username}'s story on Zenigram`,
+          url: shareUrl,
+        });
+
+        if (
+          activeStoryIdRef.current === currentStoryId
+        ) {
+          incrementShareCount();
+        }
+
+        return;
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+
+        if (
+          activeStoryIdRef.current === currentStoryId
+        ) {
+          setSocialMessage(
+            "Story link copied to clipboard"
+          );
+        }
+
+        return;
+      }
+
+      setSocialMessage(
+        "Sharing is not supported on this device"
+      );
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        if (
+          activeStoryIdRef.current === currentStoryId
         ) {
           setSocialMessage(
             "Unable to share story link"
           );
         }
       }
-    }, [
-      createStoryShareUrl,
-      onStoryUpdate,
-      story?._id,
-      story?.shares,
-      story?.sharesCount,
-      username,
-    ]);
+    }
+  }, [
+    storyId,
+    username,
+    createStoryShareUrl,
+    incrementShareCount,
+  ]);
 
-  const copyStoryLink =
-    useCallback(async () => {
-      if (!story?._id) {
+  /* ---------------------------------------------------------
+     COPY STORY LINK
+  --------------------------------------------------------- */
+
+  const copyStoryLink = useCallback(async () => {
+    if (!storyId) return;
+
+    const currentStoryId = storyId;
+    const shareUrl = createStoryShareUrl();
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard is not supported");
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+
+      if (
+        activeStoryIdRef.current === currentStoryId
+      ) {
+        setSocialMessage("Story link copied");
+      }
+    } catch {
+      if (
+        activeStoryIdRef.current === currentStoryId
+      ) {
+        setSocialMessage("Unable to copy story link");
+      }
+    }
+  }, [storyId, createStoryShareUrl]);
+
+  /* ---------------------------------------------------------
+     START CONVERSATION
+  --------------------------------------------------------- */
+
+  const startConversation = useCallback(
+    async (event) => {
+      event.stopPropagation();
+
+      const recipientId = getId(story?.userId);
+
+      if (!recipientId) {
+        setSocialMessage(
+          "Unable to identify this user"
+        );
         return;
       }
 
-      const shareUrl =
-        createStoryShareUrl();
-
       try {
+        const response = await fetch(
+          "/api/conversations",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              recipientId,
+              eventId: story?.event?._id || null,
+            }),
+          }
+        );
+
+        const data = await readResponse(response);
+
         if (
-          !navigator.clipboard
-            ?.writeText
+          !response.ok ||
+          !data.conversation?._id
         ) {
           throw new Error(
-            "Clipboard is not supported"
-          );
-        }
-
-        await navigator.clipboard.writeText(
-          shareUrl
-        );
-
-        setSocialMessage(
-          "Story link copied"
-        );
-      } catch {
-        setSocialMessage(
-          "Unable to copy story link"
-        );
-      }
-    }, [
-      createStoryShareUrl,
-      story?._id,
-    ]);
-
-  const startConversation =
-    useCallback(
-      async (event) => {
-        event.stopPropagation();
-
-        const recipientId =
-          story?.userId?._id;
-
-        if (!recipientId) {
-          return;
-        }
-
-        try {
-          const response =
-            await fetch(
-              "/api/conversations",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-                body: JSON.stringify(
-                  {
-                    recipientId,
-                    eventId:
-                      story?.event?._id,
-                  }
-                ),
-              }
-            );
-
-          const data =
-            await response.json();
-
-          if (
-            !response.ok ||
-            !data.conversation?._id
-          ) {
-            throw new Error(
-              data.error ||
-                data.message ||
-                "Unable to start conversation"
-            );
-          }
-
-          router.push(
-            `/messages?conversation=${encodeURIComponent(
-              data.conversation._id
-            )}`
-          );
-        } catch (error) {
-          setSocialMessage(
-            error?.message ||
+            data.error ||
+              data.message ||
               "Unable to start conversation"
           );
         }
-      },
-      [
-        router,
-        story?.event?._id,
-        story?.userId?._id,
-      ]
-    );
+
+        router.push(
+          `/messages?conversation=${encodeURIComponent(
+            data.conversation._id
+          )}`
+        );
+      } catch (error) {
+        setSocialMessage(
+          error?.message ||
+            "Unable to start conversation"
+        );
+      }
+    },
+    [
+      router,
+      story?.userId,
+      story?.event?._id,
+    ]
+  );
+
+  /* ---------------------------------------------------------
+     COMMENTS DATA
+  --------------------------------------------------------- */
+
+  const commentsThread = useMemo(
+    () => flattenComments(comments),
+    [comments]
+  );
+
+  const viewsCount =
+    story?.viewsCount ?? story?.views ?? 0;
+
+  const likesCount =
+    story?.likesCount ?? story?.likes ?? 0;
+
+  const commentsCount =
+    story?.commentsCount ?? comments.length;
+
+  const sharesCount =
+    story?.sharesCount ?? story?.shares ?? 0;
+
+  /* ---------------------------------------------------------
+     EMPTY STATE
+  --------------------------------------------------------- */
 
   if (!story) {
     return null;
   }
 
-  const commentsThread =
-    flattenComments(comments);
-
-  const viewsCount =
-    story.viewsCount ??
-    story.views ??
-    0;
-
-  const likesCount =
-    story.likesCount ??
-    story.likes ??
-    0;
-
-  const commentsCount =
-    story.commentsCount ??
-    comments.length;
-
-  const sharesCount =
-    story.sharesCount ??
-    story.shares ??
-    0;
+  /* =========================================================
+     UI
+  ========================================================= */
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/95 px-2 py-4 backdrop-blur-2xl sm:px-4"
+      ref={modalRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/95 px-2 py-4 backdrop-blur-2xl sm:px-4 outline-none"
       role="dialog"
       aria-modal="true"
       aria-label={`Story by @${username}`}
       onClick={(event) => {
-        if (
-          event.target ===
-          event.currentTarget
-        ) {
+        if (event.target === event.currentTarget) {
           onClose?.();
         }
       }}
     >
+      {/* =====================================================
+         REWARD NOTIFICATION
+      ===================================================== */}
+
       <AnimatePresence>
         {rewardNotice && (
           <motion.div
@@ -1638,8 +1789,7 @@ export default function StoryModal({
             className="absolute left-1/2 top-4 z-[120] w-[min(90vw,380px)] -translate-x-1/2 rounded-2xl border border-red-400/20 bg-[#100708]/90 px-4 py-3 shadow-2xl shadow-red-950/30 backdrop-blur-xl"
           >
             <div className="flex items-start gap-2">
-              {rewardNotice.type ===
-              "reward" ? (
+              {rewardNotice.type === "reward" ? (
                 <IoSparkles className="shrink-0 text-lg text-yellow-300" />
               ) : (
                 <IoCheckmarkCircle className="shrink-0 text-lg text-emerald-300" />
@@ -1652,16 +1802,13 @@ export default function StoryModal({
 
                 {rewardNotice.points ? (
                   <p className="text-xs text-red-300">
-                    +{rewardNotice.points}{" "}
-                    points
+                    +{rewardNotice.points} points
                   </p>
                 ) : null}
 
                 {rewardNotice.description ? (
                   <p className="text-xs text-white/65">
-                    {
-                      rewardNotice.description
-                    }
+                    {rewardNotice.description}
                   </p>
                 ) : null}
               </div>
@@ -1670,8 +1817,16 @@ export default function StoryModal({
         )}
       </AnimatePresence>
 
+      {/* =====================================================
+         STORY CONTAINER
+      ===================================================== */}
+
       <div className="relative h-[min(86dvh,780px)] w-[min(94vw,460px)] [perspective:1600px]">
-        {/* Progress bars */}
+
+        {/* ===================================================
+           PROGRESS BARS
+        =================================================== */}
+
         <div className="absolute -top-11 left-0 right-0 z-30">
           <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[.18em]">
             <span className="text-red-300/70">
@@ -1679,56 +1834,46 @@ export default function StoryModal({
             </span>
 
             <span className="text-white/45">
-              {storyIndex + 1} /{" "}
-              {stories.length}
+              {storyIndex + 1} / {stories.length}
             </span>
           </div>
 
           <div className="flex gap-1.5">
-            {stories.map(
-              (item, index) => (
+            {stories.map((item, index) => (
+              <div
+                key={item?._id || index}
+                className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/15"
+              >
                 <div
-                  key={
-                    item?._id ||
-                    index
-                  }
-                  className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/15"
-                >
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-red-500 via-rose-400 to-red-300 transition-[width]"
-                    style={{
-                      width: `${
-                        index <
-                        storyIndex
-                          ? 100
-                          : index ===
-                              storyIndex
-                            ? progress
-                            : 0
-                      }%`,
-                    }}
-                  />
-                </div>
-              )
-            )}
+                  className="h-full rounded-full bg-gradient-to-r from-red-500 via-rose-400 to-red-300"
+                  style={{
+                    width: `${
+                      index < storyIndex
+                        ? 100
+                        : index === storyIndex
+                          ? progress
+                          : 0
+                    }%`,
+                  }}
+                />
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Header */}
+        {/* ===================================================
+           STORY HEADER
+        =================================================== */}
+
         <div className="absolute -top-8 left-0 right-0 z-30 flex items-center justify-between gap-3">
           <Link
-            href={`/profile/${encodeURIComponent(
-              username
-            )}`}
+            href={`/profile/${encodeURIComponent(username)}`}
             className="flex min-w-0 items-center gap-2 rounded-full border border-white/10 bg-black/50 pr-3 backdrop-blur-md"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
+            onClick={(event) => event.stopPropagation()}
           >
             <Image
               src={
-                story.userId
-                  ?.profilePic ||
+                story.userId?.profilePic ||
                 "/user.svg"
               }
               alt=""
@@ -1743,13 +1888,12 @@ export default function StoryModal({
             </span>
 
             <span className="hidden shrink-0 text-xs text-white/45 sm:inline">
-              {formatStoryTime(
-                story.createdAt
-              )}
+              {formatStoryTime(story.createdAt)}
             </span>
           </Link>
 
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label="Close story"
@@ -1759,12 +1903,13 @@ export default function StoryModal({
           </button>
         </div>
 
-        {/* Flip container */}
+        {/* ===================================================
+           FLIP CONTAINER
+        =================================================== */}
+
         <motion.div
           animate={{
-            rotateY: flipped
-              ? 180
-              : 0,
+            rotateY: flipped ? 180 : 0,
           }}
           transition={{
             duration: 0.52,
@@ -1772,17 +1917,22 @@ export default function StoryModal({
           }}
           className="relative h-full w-full [transform-style:preserve-3d]"
         >
-          {/* STORY FRONT */}
+
+          {/* =================================================
+             STORY FRONT
+          ================================================= */}
+
           <section
             className="absolute inset-0 overflow-hidden rounded-[26px] border border-red-400/15 bg-[#080507] shadow-2xl shadow-black [backface-visibility:hidden]"
-            onPointerDown={
-              handlePointerDown
-            }
-            onPointerUp={
-              handlePointerUp
-            }
+            onPointerDown={handlePointerDown}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={() => {
+              touchStartRef.current = null;
+            }}
           >
-            {/* Media */}
+
+            {/* MEDIA */}
+
             {mediaError ? (
               <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_top,_rgba(239,68,68,.14),_transparent_42%),#080507] p-8 text-center">
                 <div>
@@ -1791,61 +1941,64 @@ export default function StoryModal({
                   </div>
 
                   <h2 className="mt-4 text-base font-semibold text-white">
-                    This story could not
-                    be displayed
+                    This story could not be displayed
                   </h2>
 
                   <p className="mt-1 text-xs text-white/45">
-                    The media may have
-                    expired or is
+                    The media may have expired or is
                     temporarily unavailable.
                   </p>
                 </div>
               </div>
-            ) : story.mediaType ===
-              "video" ? (
+            ) : story.mediaType === "video" ? (
               <video
                 ref={videoRef}
-                key={story._id}
-                src={storyMediaUrl}
+                key={storyId}
+                src={mediaSrc || storyMediaUrl}
                 autoPlay
                 muted
                 playsInline
+                preload="metadata"
+                controls={false}
+                onEnded={handleVideoEnded}
                 onError={handleMediaError}
                 className="h-full w-full object-contain"
               />
             ) : (
               <Image
-                key={story._id}
-                src={storyMediaUrl}
+                key={storyId}
+                src={mediaSrc || storyMediaUrl}
                 alt={story.caption || "Story media"}
                 fill
                 unoptimized
-                sizes="100vw"
+                sizes="(max-width: 640px) 94vw, 460px"
                 priority
                 onError={handleMediaError}
                 className="object-contain"
               />
             )}
 
-            {/* Gradient overlay */}
+            {/* GRADIENT */}
+
             <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/90 via-transparent to-black/25" />
 
-            {/* Top badges */}
+            {/* TOP BADGES */}
+
             <div className="absolute left-4 right-4 top-4 z-30 flex items-center justify-between">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/15 bg-black/45 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 backdrop-blur-md">
                 <IoShieldCheckmark className="text-xs" />
                 Z+ Protected
               </span>
 
-              {story?.event?.name ? (
+              {story.event?.name ? (
                 <span className="max-w-[55%] truncate rounded-full border border-white/10 bg-black/45 px-2.5 py-1 text-[10px] text-white/65 backdrop-blur-md">
                   {story.event.name}
                 </span>
               ) : null}
             </div>
 
-            {/* Story content */}
+            {/* STORY CONTENT */}
+
             <div className="absolute bottom-16 left-4 right-4 z-30 space-y-2">
               {story.location?.name ||
               story.locationName ? (
@@ -1870,7 +2023,8 @@ export default function StoryModal({
               ) : null}
             </div>
 
-            {/* Like animation */}
+            {/* LIKE ANIMATION */}
+
             <AnimatePresence>
               {likeBurst && (
                 <motion.div
@@ -1879,24 +2033,9 @@ export default function StoryModal({
                     scale: 0.3,
                   }}
                   animate={{
-                    opacity: [
-                      0,
-                      1,
-                      1,
-                      0,
-                    ],
-                    scale: [
-                      0.3,
-                      1.15,
-                      1.35,
-                      1.8,
-                    ],
-                    y: [
-                      0,
-                      -4,
-                      -8,
-                      -24,
-                    ],
+                    opacity: [0, 1, 1, 0],
+                    scale: [0.3, 1.15, 1.35, 1.8],
+                    y: [0, -4, -8, -24],
                   }}
                   transition={{
                     duration: 0.8,
@@ -1908,45 +2047,50 @@ export default function StoryModal({
               )}
             </AnimatePresence>
 
-            {/* Details */}
+            {/* DETAILS BUTTON */}
+
             <button
               type="button"
-              onClick={
-                flipToDetails
-              }
+              onClick={flipToDetails}
               className="absolute bottom-4 right-4 z-40 flex items-center gap-2 rounded-full border border-red-200/15 bg-black/60 px-3 py-2 text-xs font-semibold text-red-200 backdrop-blur-md transition hover:bg-black/75 active:scale-90"
             >
               <IoSparkles className="text-sm" />
               Details
             </button>
 
-            {/* Help text */}
+            {/* HELP TEXT */}
+
             <div className="pointer-events-none absolute bottom-3 left-1/2 z-[30] hidden -translate-x-1/2 rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[10px] text-white/50 backdrop-blur-sm sm:block">
-              Tap to advance • Double-tap
-              to like • Swipe to navigate
+              Tap to advance • Double-tap to like •
+              Swipe to navigate
             </div>
 
-            {/* Tap area */}
+            {/* TAP AREA */}
+
             <div
               role="button"
               tabIndex={0}
               aria-label="Advance story"
-              onClick={
-                handleStoryTap
-              }
-              onKeyDown={
-                handleStoryKeyDown
-              }
+              onClick={handleStoryTap}
+              onKeyDown={handleStoryKeyDown}
               className="absolute inset-0 z-[25] cursor-pointer outline-none"
             />
           </section>
 
-          {/* DETAILS BACK */}
-          <section className="absolute inset-0 flex flex-col overflow-hidden rounded-[26px] border border-red-400/20 bg-[radial-gradient(circle_at_top,_rgba(239,68,68,.11),_transparent_34%),#0b080a] p-4 text-white shadow-2xl [backface-visibility:hidden] [transform:rotateY(180deg)]">
-            {/* Grid background */}
+          {/* =================================================
+             STORY DETAILS BACK
+          ================================================= */}
+
+          <section
+            className="absolute inset-0 flex flex-col overflow-hidden rounded-[26px] border border-red-400/20 bg-[radial-gradient(circle_at_top,_rgba(239,68,68,.11),_transparent_34%),#0b080a] p-4 text-white shadow-2xl [backface-visibility:hidden] [transform:rotateY(180deg)]"
+          >
+
+            {/* GRID BACKGROUND */}
+
             <div className="pointer-events-none absolute inset-0 opacity-15 [background-image:linear-gradient(rgba(239,68,68,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(239,68,68,.08)_1px,transparent_1px)] [background-size:24px_24px]" />
 
-            {/* Details header */}
+            {/* DETAILS HEADER */}
+
             <div className="relative z-10 flex items-center justify-between gap-3 border-b border-white/10 pb-3">
               <div className="min-w-0">
                 <p className="text-[10px] font-semibold uppercase tracking-[.22em] text-red-300/70">
@@ -1961,9 +2105,7 @@ export default function StoryModal({
               <div className="flex gap-1.5">
                 <button
                   type="button"
-                  onClick={
-                    startConversation
-                  }
+                  onClick={startConversation}
                   aria-label={`Message @${username}`}
                   className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-white/60 transition hover:bg-white/10 active:scale-90"
                 >
@@ -1972,9 +2114,7 @@ export default function StoryModal({
 
                 <button
                   type="button"
-                  onClick={
-                    returnToStory
-                  }
+                  onClick={returnToStory}
                   aria-label="Return to story"
                   className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-white/60 transition hover:bg-white/10 active:scale-90"
                 >
@@ -1983,70 +2123,65 @@ export default function StoryModal({
               </div>
             </div>
 
-            {/* Tabs */}
+            {/* TABS */}
+
             <div
               className="relative z-10 mt-3 grid grid-cols-3 gap-1 rounded-xl border border-white/10 bg-black/20 p-1 text-xs"
               role="tablist"
               aria-label="Story details tabs"
             >
-              {[
-                "comments",
-                "share",
-                "activity",
-              ].map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  role="tab"
-                  aria-selected={
-                    detailTab ===
-                    tab
-                  }
-                  onClick={() =>
-                    setDetailTab(
-                      tab
-                    )
-                  }
-                  className={`rounded-lg px-3 py-2 font-semibold capitalize transition-all ${
-                    detailTab ===
-                    tab
-                      ? "bg-red-500/20 text-red-200 shadow-[inset_0_0_0_1px_rgba(248,113,113,.15)]"
-                      : "text-white/50 hover:bg-white/5 hover:text-white/75"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
+              {["comments", "share", "activity"].map(
+                (tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    role="tab"
+                    aria-selected={detailTab === tab}
+                    onClick={() => setDetailTab(tab)}
+                    className={`rounded-lg px-3 py-2 font-semibold capitalize transition-all ${
+                      detailTab === tab
+                        ? "bg-red-500/20 text-red-200 shadow-[inset_0_0_0_1px_rgba(248,113,113,.15)]"
+                        : "text-white/50 hover:bg-white/5 hover:text-white/75"
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                )
+              )}
             </div>
 
-            {/* Tab content */}
+            {/* =================================================
+               TAB CONTENT
+            ================================================= */}
+
             <div className="relative z-10 mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
-              {/* COMMENTS */}
-              {detailTab ===
-                "comments" && (
+
+              {/* =============================================
+                 COMMENTS
+              ============================================= */}
+
+              {detailTab === "comments" && (
                 <div className="space-y-3">
+
+                  {/* COMMENT FORM */}
+
                   <form
-                    onSubmit={
-                      submitComment
-                    }
+                    onSubmit={submitComment}
                     className="relative rounded-2xl border border-white/10 bg-black/25 p-1"
                   >
                     {reply && (
                       <div className="mb-1 flex items-center justify-between rounded-xl bg-red-300/5 px-3 py-1.5 text-[10px] text-red-200">
                         <span>
                           Replying to @
-                          {getUserName(
-                            reply.user
-                          )}
+                          {getUserName(reply.user)}
                         </span>
 
                         <button
                           type="button"
-                          onClick={() =>
-                            setReply(
-                              null
-                            )
-                          }
+                          onClick={() => {
+                            setReply(null);
+                            setComment("");
+                          }}
                           aria-label="Cancel reply"
                         >
                           <IoClose />
@@ -2054,54 +2189,36 @@ export default function StoryModal({
                       </div>
                     )}
 
-                    {mentionResults.length >
-                      0 && (
+                    {/* MENTION RESULTS */}
+
+                    {mentionResults.length > 0 && (
                       <div className="absolute bottom-full left-0 right-0 z-40 mb-2 overflow-hidden rounded-xl border border-white/10 bg-[#0d090b] shadow-2xl">
-                        {mentionResults.map(
-                          (
-                            user
-                          ) => (
-                            <button
-                              key={
-                                user._id
-                              }
-                              type="button"
-                              onClick={() =>
-                                selectMention(
-                                  user.username
-                                )
-                              }
-                              className="block w-full px-3 py-2 text-left text-xs text-white/80 hover:bg-white/5"
-                            >
-                              @
-                              {
-                                user.username
-                              }
-                            </button>
-                          )
-                        )}
+                        {mentionResults.map((user) => (
+                          <button
+                            key={user._id}
+                            type="button"
+                            onClick={() =>
+                              selectMention(user.username)
+                            }
+                            className="block w-full px-3 py-2 text-left text-xs text-white/80 hover:bg-white/5"
+                          >
+                            @{user.username}
+                          </button>
+                        ))}
                       </div>
                     )}
 
                     <div className="flex items-center gap-1">
                       <input
-                        value={
-                          comment
-                        }
-                        onChange={(
-                          event
-                        ) =>
+                        value={comment}
+                        onChange={(event) =>
                           updateCommentText(
-                            event
-                              .target
-                              .value
+                            event.target.value
                           )
                         }
                         placeholder="Write something thoughtful…"
                         aria-label="Write a comment"
-                        maxLength={
-                          500
-                        }
+                        maxLength={500}
                         className="min-w-0 flex-1 bg-transparent px-3 py-2 text-xs text-white placeholder-white/40 outline-none"
                       />
 
@@ -2123,38 +2240,32 @@ export default function StoryModal({
                     </div>
                   </form>
 
+                  {/* COMMENT MESSAGE */}
+
                   {socialMessage && (
                     <p className="rounded-xl border border-red-300/10 bg-red-300/5 px-3 py-2 text-xs text-red-100">
                       {socialMessage}
                     </p>
                   )}
 
-                  {commentsThread.length ===
-                  0 ? (
+                  {/* COMMENT LIST */}
+
+                  {commentsThread.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center">
                       <IoChatbubbleOutline className="mx-auto text-2xl text-white/20" />
 
                       <p className="mt-2 text-xs text-white/40">
-                        No comments yet.
-                        Be the first!
+                        No comments yet. Be the first!
                       </p>
                     </div>
                   ) : (
                     commentsThread.map(
-                      ({
-                        comment: item,
-                        depth,
-                      }) => (
+                      ({ comment: item, depth }) => (
                         <div
-                          key={
-                            item._id
-                          }
+                          key={item._id}
                           style={{
                             marginLeft: `${
-                              Math.min(
-                                depth,
-                                6
-                              ) * 12
+                              Math.min(depth, 6) * 12
                             }px`,
                           }}
                           className="rounded-2xl border border-white/10 bg-white/5 p-3"
@@ -2162,26 +2273,17 @@ export default function StoryModal({
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-semibold text-red-200">
-                                @
-                                {getUserName(
-                                  item.user
-                                )}
+                                @{getUserName(item.user)}
                               </p>
 
                               <p className="mt-1 break-words text-xs text-white/80">
-                                {
-                                  item.text
-                                }
+                                {item.text}
                               </p>
                             </div>
 
                             <button
                               type="button"
-                              onClick={() =>
-                                likeComment(
-                                  item
-                                )
-                              }
+                              onClick={() => likeComment(item)}
                               aria-label={
                                 item.likedByMe
                                   ? "Unlike comment"
@@ -2208,11 +2310,7 @@ export default function StoryModal({
 
                             <button
                               type="button"
-                              onClick={() =>
-                                openReply(
-                                  item
-                                )
-                              }
+                              onClick={() => openReply(item)}
                               className="text-[9px] text-red-300/70 hover:text-red-200"
                             >
                               Reply
@@ -2225,15 +2323,18 @@ export default function StoryModal({
                 </div>
               )}
 
-              {/* SHARE */}
-              {detailTab ===
-                "share" && (
+              {/* =============================================
+                 SHARE
+              ============================================= */}
+
+              {detailTab === "share" && (
                 <div className="space-y-3">
+
+                  {/* NATIVE SHARE */}
+
                   <button
                     type="button"
-                    onClick={
-                      nativeShare
-                    }
+                    onClick={nativeShare}
                     className="flex w-full items-center gap-3 rounded-2xl border border-red-300/15 bg-red-300/5 p-3 text-left transition hover:bg-red-300/10 active:scale-[.99]"
                   >
                     <span className="text-2xl">
@@ -2246,20 +2347,18 @@ export default function StoryModal({
                       </p>
 
                       <p className="text-[10px] text-white/60">
-                        Use your device
-                        share or copy
-                        the link
+                        Use your device share or copy the link
                       </p>
                     </span>
 
                     <IoArrowForward className="text-white/35" />
                   </button>
 
+                  {/* COPY LINK */}
+
                   <button
                     type="button"
-                    onClick={
-                      copyStoryLink
-                    }
+                    onClick={copyStoryLink}
                     className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[.025] p-3 text-left transition hover:bg-white/5 active:scale-[.99]"
                   >
                     <span className="grid h-9 w-9 place-items-center rounded-full bg-white/5">
@@ -2272,100 +2371,71 @@ export default function StoryModal({
                       </p>
 
                       <p className="text-[10px] text-white/60">
-                        Copy this story’s
-                        direct
-                        Zenigram link
+                        Copy this story’s direct Zenigram link
                       </p>
                     </span>
                   </button>
 
+                  {/* SEND TO USER */}
+
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
                     <p className="mb-2 text-xs font-semibold text-white/65">
-                      Send to a Zenigram
-                      user
+                      Send to a Zenigram user
                     </p>
 
                     <input
-                      value={
-                        shareQuery
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        setShareQuery(
-                          event.target
-                            .value
-                        )
+                      value={shareQuery}
+                      onChange={(event) =>
+                        setShareQuery(event.target.value)
                       }
                       placeholder="Enter username…"
                       aria-label="Search users to share with"
                       className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-white placeholder-white/40 outline-none focus:border-red-300/30"
                     />
 
-                    {shareUsers.length >
-                      0 && (
+                    {shareUsers.length > 0 && (
                       <div className="mt-2 space-y-1">
-                        {shareUsers.map(
-                          (
-                            user
-                          ) => (
-                            <button
-                              key={
-                                user._id
+                        {shareUsers.map((user) => (
+                          <button
+                            key={user._id}
+                            type="button"
+                            onClick={() =>
+                              shareToUser(user)
+                            }
+                            disabled={Boolean(shareBusy)}
+                            className="flex w-full items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-left text-xs text-white transition hover:bg-white/10 disabled:opacity-50 active:scale-[.98]"
+                          >
+                            <Image
+                              src={
+                                user.profilePic ||
+                                "/user.svg"
                               }
-                              type="button"
-                              onClick={() =>
-                                shareToUser(
-                                  user
-                                )
-                              }
-                              disabled={Boolean(
-                                shareBusy
-                              )}
-                              className="flex w-full items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-left text-xs text-white transition hover:bg-white/10 disabled:opacity-50 active:scale-[.98]"
-                            >
-                              <Image
-                                src={
-                                  user.profilePic ||
-                                  "/user.svg"
-                                }
-                                alt=""
-                                width={
-                                  24
-                                }
-                                height={
-                                  24
-                                }
-                                unoptimized
-                                className="h-6 w-6 rounded-full object-cover"
-                              />
+                              alt=""
+                              width={24}
+                              height={24}
+                              unoptimized
+                              className="h-6 w-6 rounded-full object-cover"
+                            />
 
-                              <span className="flex-1 truncate">
-                                @
-                                {
-                                  user.username
-                                }
+                            <span className="flex-1 truncate">
+                              @{user.username}
+                            </span>
+
+                            {shareBusy === user._id ? (
+                              <span className="text-[10px] text-red-300">
+                                Sending…
                               </span>
-
-                              {shareBusy ===
-                              user._id ? (
-                                <span className="text-[10px] text-red-300">
-                                  Sending…
-                                </span>
-                              ) : (
-                                <IoArrowForward className="shrink-0 text-white/40" />
-                              )}
-                            </button>
-                          )
-                        )}
+                            ) : (
+                              <IoArrowForward className="shrink-0 text-white/40" />
+                            )}
+                          </button>
+                        ))}
                       </div>
                     )}
 
                     {shareError && (
                       <p className="mt-2 rounded-lg border border-red-300/20 bg-red-300/10 px-3 py-2 text-xs text-red-200">
-                        {
-                          shareError
-                        }
+                        {shareError}
                       </p>
                     )}
                   </div>
@@ -2378,21 +2448,15 @@ export default function StoryModal({
                 </div>
               )}
 
-              {/* ACTIVITY */}
-              {detailTab ===
-                "activity" && (
+              {/* =============================================
+                 ACTIVITY
+              ============================================= */}
+
+              {detailTab === "activity" && (
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    [
-                      IoEye,
-                      viewsCount,
-                      "Views",
-                    ],
-                    [
-                      IoHeart,
-                      likesCount,
-                      "Likes",
-                    ],
+                    [IoEye, viewsCount, "Views"],
+                    [IoHeart, likesCount, "Likes"],
                     [
                       IoChatbubbleOutline,
                       commentsCount,
@@ -2403,57 +2467,44 @@ export default function StoryModal({
                       sharesCount,
                       "Shares",
                     ],
-                  ].map(
-                    ([
-                      Icon,
-                      value,
-                      label,
-                    ]) => (
-                      <div
-                        key={
-                          label
-                        }
-                        className="rounded-2xl border border-white/10 bg-white/[.025] p-4"
-                      >
-                        <Icon className="text-2xl text-red-200" />
+                  ].map(([Icon, value, label]) => (
+                    <div
+                      key={label}
+                      className="rounded-2xl border border-white/10 bg-white/[.025] p-4"
+                    >
+                      <Icon className="text-2xl text-red-200" />
 
-                        <p className="mt-3 text-2xl font-bold">
-                          {formatRelativeCount(
-                            value
-                          )}
-                        </p>
+                      <p className="mt-3 text-2xl font-bold">
+                        {formatRelativeCount(value)}
+                      </p>
 
-                        <p className="text-[10px] text-white/50">
-                          {
-                            label
-                          }
-                        </p>
-                      </div>
-                    )
-                  )}
+                      <p className="text-[10px] text-white/50">
+                        {label}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
 
-            {/* Footer */}
+            {/* =================================================
+               DETAILS FOOTER
+            ================================================= */}
+
             <div className="relative z-10 mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
               <div className="min-w-0">
                 <p className="text-[10px] text-white/30">
-                  Stories expire in
-                  24 hours
+                  Stories expire in 24 hours
                 </p>
 
                 <p className="mt-0.5 text-[9px] text-white/20">
-                  Use Z+ controls to keep
-                  your audience in control.
+                  Use Z+ controls to keep your audience in control.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={
-                  returnToStory
-                }
+                onClick={returnToStory}
                 aria-label="Return to story"
                 className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 bg-white/5 text-white/60 transition hover:bg-white/10 active:scale-90"
               >
@@ -2463,21 +2514,16 @@ export default function StoryModal({
           </section>
         </motion.div>
 
-        {/* STORY NAVIGATION */}
+        {/* ===================================================
+           STORY NAVIGATION
+        =================================================== */}
+
         {!flipped && (
           <>
             <button
               type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-
-                moveToStory(
-                  storyIndex - 1
-                );
-              }}
-              disabled={
-                storyIndex === 0
-              }
+              onClick={goToPreviousStory}
+              disabled={storyIndex === 0}
               aria-label="Previous story"
               className="absolute left-2 top-1/2 z-40 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-white/10 bg-black/60 text-white/80 backdrop-blur-md transition hover:bg-black/80 disabled:opacity-30 active:scale-90"
             >
@@ -2486,17 +2532,8 @@ export default function StoryModal({
 
             <button
               type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-
-                moveToStory(
-                  storyIndex + 1
-                );
-              }}
-              disabled={
-                storyIndex ===
-                stories.length - 1
-              }
+              onClick={advanceStory}
+              disabled={storyIndex === stories.length - 1}
               aria-label="Next story"
               className="absolute right-2 top-1/2 z-40 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-white/10 bg-black/60 text-white/80 backdrop-blur-md transition hover:bg-black/80 disabled:opacity-30 active:scale-90"
             >
